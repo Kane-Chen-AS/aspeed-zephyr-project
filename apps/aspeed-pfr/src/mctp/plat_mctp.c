@@ -19,14 +19,6 @@
 
 LOG_MODULE_REGISTER(plat_mctp, CONFIG_LOG_DEFAULT_LEVEL);
 
-/* i2c dev bus */
-#if defined(CONFIG_BOARD_AST2700_DCSCM)
-#define I2C_BUS_BMC 0x05
-#else
-#define I2C_BUS_BMC 0x00
-#endif
-#define I2C_BUS_PCH 0x02
-
 /* i2c 7 bit address */
 #define I2C_ADDR_ROT_FOR_BMC 0x38
 #define I2C_ADDR_ROT_FOR_PCH 0x70
@@ -117,6 +109,8 @@ void plat_mctp_init(void)
 			LOG_ERR("mctp interface wrapper init failed!!");
 			continue;
 		}
+		mctp_interface_set_channel_id(&p->mctp_inst->mctp_wrapper.mctp_interface,
+			p->conf.smbus_conf.bus);
 
 		LOG_DBG("mctp_inst = %p", p->mctp_inst);
 		rc = mctp_set_medium_configure(p->mctp_inst, MCTP_MEDIUM_TYPE_SMBUS, p->conf);

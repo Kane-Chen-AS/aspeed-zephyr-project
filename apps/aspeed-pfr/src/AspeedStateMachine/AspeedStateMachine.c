@@ -68,6 +68,10 @@ uint8_t AfmStatus = 0;
 #endif
 #endif
 
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+#include "SPDM/SPDMSession.h"
+#endif
+
 #if defined(CONFIG_OTP_ASPEED) || defined(CONFIG_OTP_SIM)
 #if defined(CONFIG_OTP_KEY_RETIRE) || defined(CONFIG_OTP_KEY_ADD)
 #include <zephyr/storage/flash_map.h>
@@ -355,6 +359,9 @@ void enter_tmin1(void *o)
 	if (bmc_reset_only) {
 		init_i2c_filters();
 		BMCBootHold();
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+		spdm_disable_session(afm_dev_idx_bmc);
+#endif
 		evt_ctx->data.bit8[2] |= BmcOnlyReset;
 		gWdtBootStatus &= ~WDT_BMC_BOOT_DONE_MASK;
 		SetBmcCheckpoint(0);
@@ -371,6 +378,10 @@ void enter_tmin1(void *o)
 #endif
 	} else if (pch_reset_only) {
 		PCHBootHold();
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+		spdm_disable_session(afm_dev_idx_cpu0);
+		spdm_disable_session(afm_dev_idx_cpu1);
+#endif
 		evt_ctx->data.bit8[2] |= PchOnlyReset;
 		gWdtBootStatus &= ~WDT_PCH_BOOT_DONE_MASK;
 #if defined(CONFIG_INTEL_PFR)
@@ -382,6 +393,11 @@ void enter_tmin1(void *o)
 		evt_ctx->data.bit8[2] &= ~(BmcOnlyReset | PchOnlyReset);
 		BMCBootHold();
 		PCHBootHold();
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+		spdm_disable_session(afm_dev_idx_bmc);
+		spdm_disable_session(afm_dev_idx_cpu0);
+		spdm_disable_session(afm_dev_idx_cpu1);
+#endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 		intel_rsu_unhide_rsu();
 #endif
@@ -1236,7 +1252,6 @@ void handle_checkpoint(void *o)
 
 	switch (evt_ctx->data.bit8[0]) {
 	case BmcCheckpoint:
-		UpdateBmcCheckpoint(evt_ctx->data.bit8[1]);
 		if (evt_ctx->data.bit8[1] == CompletingExecutionBlock) {
 			LOG_INF("BMC Boot complete RUNTIME");
 			k_event_post(&pfr_system_event, PFR_SYSTEM_BMC_BOOTED);
@@ -1254,6 +1269,7 @@ void handle_checkpoint(void *o)
 			mctp_i3c_configure_cpu_i3c_devs();
 #endif
 #endif
+			UpdateBmcCheckpoint(evt_ctx->data.bit8[1]);
 		}
 		break;
 #if defined(CONFIG_INTEL_PFR)
@@ -2137,6 +2153,7 @@ void AspeedStateMachine(void)
 		} else if (current_state == &state_table[RUNTIME]) {
 			switch (fifo_in->event) {
 			case RESET_DETECTED:
+				set_secure_connection_state(false);
 #if defined(CONFIG_PIT_PROTECTION)
 			case SEAL_FIRMWARE:
 #endif
@@ -2241,6 +2258,7 @@ void AspeedStateMachine(void)
 #endif
 			case RESET_DETECTED:
 				reset_from_unprovision_state = true;
+				set_secure_connection_state(false);
 #if defined(CONFIG_PIT_PROTECTION)
 			case SEAL_FIRMWARE:
 #endif

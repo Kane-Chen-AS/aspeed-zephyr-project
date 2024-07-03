@@ -33,6 +33,16 @@ config PFR_SPDM_RESPONDER
 	default n
 	bool "SPDM responder support"
 
+config SECURE_CONNECTION_RESPONDER
+	depends on PFR_SPDM_RESPONDER
+	default n
+	bool "SPDM secure responder support"
+
+config SECURE_CONNECTION_REQUESTER
+	depends on PFR_MCTP
+	default n
+	bool "SPDM secure requester support"
+
 if PFR_SPDM_ATTESTATION
 
 config BMC_AFM_RECOVERY_OFFSET
@@ -54,6 +64,11 @@ config PFR_SPDM_ATTESTATION_DURATION
 config PFR_SPDM_ATTESTATION_PERIOD
 	default 600
 	int "Period of attestation in seconds"
+
+config PFR_HEARTBEAT_PERIOD
+	default 60
+	range 0 255
+	int "Period of heartbeat in seconds"
 
 config PFR_SPDM_ATTESTATION_DEVICE_OFFSET
 	default 0x1000

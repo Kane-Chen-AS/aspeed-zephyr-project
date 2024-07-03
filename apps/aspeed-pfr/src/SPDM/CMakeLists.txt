@@ -28,4 +28,32 @@ target_sources(app PRIVATE
 	ResponseCmd/SPDMChallengeAuth.c
 	)
 
+if(CONFIG_SECURE_CONNECTION_RESPONDER OR CONFIG_SECURE_CONNECTION_REQUESTER)
+target_sources(app PRIVATE
+	SPDMSession.c
+	SPDMKeyOperation.c
+)
+endif()
+
+if(CONFIG_SECURE_CONNECTION_REQUESTER)
+target_sources(app PRIVATE
+	RequestCmd/SPDMKeyExchange.c
+	RequestCmd/SPDMFinish.c
+	RequestCmd/SPDMGetEncap.c
+	RequestCmd/SPDMHeartBeat.c
+	RequestCmd/SPDMEnd.c
+)
+endif()
+
+if(CONFIG_SECURE_CONNECTION_RESPONDER)
+target_sources(app PRIVATE
+	ResponseCmd/SPDMKeyExchangeRsp.c
+	ResponseCmd/SPDMFinishRsp.c
+	ResponseCmd/SPDMHeartBeatRsp.c
+	ResponseCmd/SPDMEndSession.c
+	ResponseCmd/SPDMPSKExchange.c
+	ResponseCmd/SPDMEncapHandle.c
+	ResponseCmd/SPDMKeyUpdate.c
+)
+endif()
 # Request Commands

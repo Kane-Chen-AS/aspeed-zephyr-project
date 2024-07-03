@@ -8,17 +8,24 @@
 #include "SPDM/SPDMCommon.h"
 #include "SPDM/SPDMContext.h"
 
+#include <mbedtls/sha512.h>
+#include <mbedtls/md.h>
+#include <mbedtls/gcm.h>
+#include <stdio.h>
+
 LOG_MODULE_REGISTER(spdm_crytpo, CONFIG_LOG_DEFAULT_LEVEL);
 
 int spdm_crypto_sign(void *ctx, uint8_t *input, size_t input_size, uint8_t *sig, size_t *sig_size,
-		bool sig_context_hash, uint8_t *sig_context, size_t sig_context_len)
+		bool sig_context_hash, uint8_t *sig_context, size_t sig_context_len, uint8_t key_type)
 {
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	int ret = -1;
 	uint8_t *message_hash = NULL;
+
 	if (sig_context_hash) {
 		/* DSP0274 v1.2.1: 15 Signature generation */
 		uint8_t *M = malloc(100 + input_size);
+
 		if (M == NULL) {
 			LOG_ERR("Failed to allocate M size=%d", 100 + input_size);
 			ret = -1;
@@ -49,21 +56,28 @@ int spdm_crypto_sign(void *ctx, uint8_t *input, size_t input_size, uint8_t *sig,
 
 
 
-	switch(context->remote.algorithms.base_asym_sel) {
+	switch (context->remote.algorithms.base_asym_sel) {
 	case SPDM_ALGORITHMS_BASE_ALGO_TPM_ALG_ECDSA_ECC_NIST_P384:
 	{
 		mbedtls_mpi r, s;
+
 		mbedtls_mpi_init(&r);
 		mbedtls_mpi_init(&s);
 
-		LOG_HEXDUMP_INF(message_hash, input_size, "Message Hash");
-		ret = mbedtls_ecdsa_sign(&context->key_pair.MBEDTLS_PRIVATE(grp),
-				&r, &s, &context->key_pair.MBEDTLS_PRIVATE(d),
+		SPDM_DBG_HEXDUMP(message_hash, input_size, "Message Hash");
+		if (key_type == SPDM_RESPONSE_MODE) {
+			ret = mbedtls_ecdsa_sign(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
+				&r, &s, &context->rsp_key_pair.MBEDTLS_PRIVATE(d),
 				message_hash, input_size, context->random_callback, context);
+		} else {
+			ret = mbedtls_ecdsa_sign(&context->req_key_pair.MBEDTLS_PRIVATE(grp),
+				&r, &s, &context->req_key_pair.MBEDTLS_PRIVATE(d),
+				message_hash, input_size, context->random_callback, context);
+		}
 
 		if (ret != 0) {
-			LOG_HEXDUMP_ERR(input, input_size, "Hash:");
 			LOG_ERR("mbedtls_ecdsa_sign ret=%x", -ret);
+			LOG_HEXDUMP_ERR(input, input_size, "Hash:");
 		}
 		mbedtls_mpi_write_binary(&r, sig, 48);
 		mbedtls_mpi_write_binary(&s, sig + 48, 48);
@@ -98,13 +112,13 @@ int spdm_crypto_verify(void *ctx, uint8_t slot_id, uint8_t *input, size_t input_
 	/* Get Public Key for verification */
 	mbedtls_x509_crt *cur = &context->remote.certificate.certs[slot_id].chain;
 	size_t cert_index = 0;
+
 	while (cur) {
 		++cert_index;
 		if (cur->next != NULL)
 			cur = cur->next;
-		else {
+		else
 			break;
-		}
 	}
 
 	if (cur == NULL) {
@@ -113,9 +127,11 @@ int spdm_crypto_verify(void *ctx, uint8_t slot_id, uint8_t *input, size_t input_
 	}
 
 	uint8_t *message_hash = NULL;
+
 	if (sig_context_hash) {
 		/* DSP0274 v1.2.1: 15 Signature generation */
 		uint8_t *M = malloc(100 + input_size);
+
 		if (M == NULL) {
 			LOG_ERR("Failed to allocate M size=%d", 100 + input_size);
 			ret = -1;
@@ -147,10 +163,11 @@ int spdm_crypto_verify(void *ctx, uint8_t slot_id, uint8_t *input, size_t input_
 	}
 
 	/* TODO: EC vs RSA */
-	switch(mbedtls_pk_ec(cur->pk)->MBEDTLS_PRIVATE(grp).id) {
+	switch (mbedtls_pk_ec(cur->pk)->MBEDTLS_PRIVATE(grp).id) {
 	case MBEDTLS_ECP_DP_SECP384R1:
 	{
 		mbedtls_mpi r, s;
+
 		mbedtls_mpi_init(&r);
 		mbedtls_mpi_init(&s);
 
@@ -158,10 +175,10 @@ int spdm_crypto_verify(void *ctx, uint8_t slot_id, uint8_t *input, size_t input_
 		mbedtls_mpi_read_binary(&s, (uint8_t *)sig + 48, 48);
 
 		ret = mbedtls_ecdsa_verify(
-				&mbedtls_pk_ec(cur->pk)->MBEDTLS_PRIVATE(grp),
-				message_hash, input_size,
-				&mbedtls_pk_ec(cur->pk)->MBEDTLS_PRIVATE(Q),
-				&r, &s);
+			&mbedtls_pk_ec(cur->pk)->MBEDTLS_PRIVATE(grp),
+			message_hash, input_size,
+			&mbedtls_pk_ec(cur->pk)->MBEDTLS_PRIVATE(Q),
+			&r, &s);
 		if (ret != 0) {
 			LOG_HEXDUMP_ERR(input, input_size, "Hash:");
 			LOG_ERR("mbedtls_ecdsa_verify ret=%x", -ret);

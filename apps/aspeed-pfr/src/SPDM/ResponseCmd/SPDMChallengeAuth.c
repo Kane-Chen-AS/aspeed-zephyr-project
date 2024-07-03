@@ -17,6 +17,7 @@ int spdm_handle_challenge(void *ctx, void *req, void *rsp)
 	struct spdm_message *rsp_msg = (struct spdm_message *)rsp;
 	int ret;
 	/* Deserialize */
+	LOG_INF("Handle HANDLE_CHALLENGE");
 
 	// TODO: Check if slot exists
 	uint8_t slot_id = req_msg->header.param1;
@@ -54,6 +55,9 @@ int spdm_handle_challenge(void *ctx, void *req, void *rsp)
 	size_t hash_length = spdm_context_base_hash_size(context);
 	uint32_t opaque_length = 0;
 	uint32_t signature_length = MBEDTLS_ECDSA_MAX_LEN;
+	// Calculate Certificate Chain hash
+	uint8_t hash[MBEDTLS_MD_MAX_SIZE];
+
 	spdm_buffer_init(&rsp_msg->buffer, hash_length + 32 + hash_length + 2 + opaque_length + signature_length);
 
 	rsp_msg->header.spdm_version = req_msg->header.spdm_version;
@@ -61,8 +65,6 @@ int spdm_handle_challenge(void *ctx, void *req, void *rsp)
 	rsp_msg->header.param1 = slot_id; // SlotID for request
 	rsp_msg->header.param2 = context->local.certificate.slot_mask; // SlotMask
 
-	// Calculate Certificate Chain hash
-	uint8_t hash[MBEDTLS_MD_MAX_SIZE];
 	mbedtls_sha512(context->local.certificate.certs[slot_id].data,
 			context->local.certificate.certs[slot_id].size,
 			hash, 1);
@@ -85,7 +87,7 @@ int spdm_handle_challenge(void *ctx, void *req, void *rsp)
 
 	// Opaque Data: Reserved for now.
 	// Signature by selected ALGORITHMS by alias id private key
-	// Alias ID Key is in context->key_pair
+	// Alias ID Key is in context->rsp_key_pair
 	// Signature = Sign(SK, Hash(M1))
 	// - Sign(): Algorithm selected in ALGORITHMS (SECP384R1)
 	// - SK: private key associated with the leaf ceritficate of
@@ -106,9 +108,10 @@ int spdm_handle_challenge(void *ctx, void *req, void *rsp)
 
 	ret = spdm_crypto_sign(context, hash, hash_length, sig, &sig_len,
 			req_msg->header.spdm_version == SPDM_VERSION_12,
-			SPDM_SIGN_CONTEXT_M1M2_RSP, strlen(SPDM_SIGN_CONTEXT_M1M2_RSP));
+			SPDM_SIGN_CONTEXT_M1M2_RSP, strlen(SPDM_SIGN_CONTEXT_M1M2_RSP),
+			SPDM_RESPONSE_MODE);
 	if (ret == 0) {
-		LOG_HEXDUMP_INF(sig, sig_len, "Signature:");
+		SPDM_DBG_HEXDUMP(sig, sig_len, "Signature:");
 		spdm_buffer_append_array(&rsp_msg->buffer, sig, sig_len);
 	} else {
 		LOG_ERR("CHALLENGE Failed to sign message");

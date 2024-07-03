@@ -10,7 +10,9 @@
 #include <stdint.h>
 #include "include/SmbusMailBoxCom.h"
 #include "AspeedStateMachine/common_smc.h"
-
+#if defined(CONFIG_PFR_MCTP)
+#include "mctp/plat_mctp.h"
+#endif
 #pragma pack(1)
 
 typedef enum _SMBUS_MAILBOX_RF_ADDRESS_READONLY {
@@ -269,9 +271,15 @@ bool IsSpdmAttestationEnabled();
 // If root key hash, pch and bmc offsets are provisioned, we say CPLD has been provisioned
 #define UFM_STATUS_PROVISIONED_BIT_MASK               0b000001110
 
-int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data);
+int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data, int channel_id, uint8_t s_eid);
 int swmbx_mctp_i3c_doe_msg_read_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data);
 
 #define BMC_OFFSET_SIZE 12
 #define PCH_OFFSET_SIZE 12
 
+typedef enum {
+	SECURE_CONNECTION_DISABLE,
+	SECURE_CONNECTION_LOOSE_MODE,
+	SECURE_CONNECTION_RESTRICT_MODE
+} SECURE_CONNECTION_LOCK_MODE;
+void set_secure_connection_state(bool enable);

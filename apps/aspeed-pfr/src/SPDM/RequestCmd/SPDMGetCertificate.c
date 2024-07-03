@@ -57,9 +57,9 @@ int spdm_get_certificate(void *ctx, uint8_t slot_id)
 		}
 
 		uint16_t portion_length, remainder_length;
+
 		spdm_buffer_get_u16(&rsp_msg.buffer, &portion_length);
 		spdm_buffer_get_u16(&rsp_msg.buffer, &remainder_length);
-
 		/* Check the message length again */
 		if (rsp_msg.buffer.write_ptr != portion_length + 4) {
 			LOG_ERR("CERTIFICATE portion length incorrect");
@@ -109,6 +109,7 @@ cleanup:
 		if (ret == 0 && remainder_length == 0) {
 			/* Check DIGEST first */
 			uint8_t hash[48];
+
 			mbedtls_sha512(context->remote.certificate.certs[slot_id].data,
 					context->remote.certificate.certs[slot_id].size,
 					hash, 1);
@@ -142,8 +143,9 @@ cleanup:
 
 		/* Verify the certificate */
 		mbedtls_x509_crt *remote_cert = &context->remote.certificate.certs[slot_id].chain;
-		mbedtls_x509_crt_free( remote_cert );
-		mbedtls_x509_crt_init( remote_cert );
+
+		mbedtls_x509_crt_free(remote_cert);
+		mbedtls_x509_crt_init(remote_cert);
 
 		size_t asn1_len, current_cert_len = 0;
 		size_t cert_chain_len = context->remote.certificate.certs[slot_id].size - 4 - 48;
@@ -156,26 +158,24 @@ cleanup:
 			ret = mbedtls_asn1_get_tag(
 					&tmp_ptr, cert_chain + cert_chain_len, &asn1_len,
 					MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE);
-			if (ret != 0) {
+			if (ret != 0)
 				break;
-			}
 
 			current_cert_len = asn1_len + (tmp_ptr - current_cert);
 			current_index++;
 
 			ret = mbedtls_x509_crt_parse_der_nocopy(
 					remote_cert, current_cert, current_cert_len);
-			if (ret < 0) {
+			if (ret < 0)
 				break;
-			}
 
 			current_cert = current_cert + current_cert_len;
 		}
 
 		ret = mbedtls_x509_crt_verify(remote_cert, ca_cert, NULL, NULL, &flags, NULL, NULL);
-		if (context->private_data && pPubkey->CertificateSize) {
+		if (context->private_data && pPubkey->CertificateSize)
 			mbedtls_x509_crt_free(ca_cert);
-		}
+
 		if (ret < 0 || flags != 0) {
 			LOG_ERR("Failed to verify Certificate[%d], reject this cert ret=%x flags=%x", slot_id, -ret, flags);
 			/* Drop the certificate */

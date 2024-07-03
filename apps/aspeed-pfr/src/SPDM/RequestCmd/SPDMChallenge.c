@@ -49,7 +49,7 @@ int spdm_challenge(void *ctx, uint8_t slot_id, uint8_t measurements)
 		goto cleanup;
 	}
 
-	/* Verify the CHALLENGE_AUTH result 
+	/* Verify the CHALLENGE_AUTH result
 	 * Off         Len    Name
 	 *    0,         H    CertChainHash
 	 *    H,        32    Nonce

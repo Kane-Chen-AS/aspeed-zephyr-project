@@ -47,8 +47,8 @@ int spdm_get_version(void *ctx)
 
 	spdm_buffer_get_reserved(&rsp_msg.buffer, 1);
 	uint8_t count = 0;
-	spdm_buffer_get_u8(&rsp_msg.buffer, &count);
 
+	spdm_buffer_get_u8(&rsp_msg.buffer, &count);
 	if (count > 0 && count < SPDM_MAX_VERSION) {
 		context->remote.version.version_number_entry_count = 0;
 		for (size_t i = 0; i < count; ++i) {

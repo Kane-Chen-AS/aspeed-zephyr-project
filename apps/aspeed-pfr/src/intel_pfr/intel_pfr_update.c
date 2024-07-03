@@ -351,11 +351,11 @@ int update_afm_v40(enum AFM_PARTITION_TYPE part, uint32_t address, size_t length
 		if (manifest->state == FIRMWARE_RECOVERY) {
 			flash_type = ROT_EXT_AFM_ACT_1;
 			source_flash_type = ROT_EXT_AFM_RC_1;
-			LOG_INF("to recover active region");
+			LOG_INF("Recover active region");
 		} else {
 			flash_type = ROT_EXT_AFM_ACT_1;
 			source_flash_type = BMC_SPI;
-			LOG_INF("to update active region");
+			LOG_INF("Update active region");
 		}
 	} else if (part == AFM_PART_RCV_1) {
 		flash_type = ROT_EXT_AFM_RC_1;

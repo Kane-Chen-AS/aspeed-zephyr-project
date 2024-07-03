@@ -57,7 +57,7 @@ static uint16_t mctp_i3c_tmq_read(void *mctp_p, void *msg_p)
 	/** mctp rx keep polling, return length 0 directly if no data or invalid data **/
 	if (ret <= 0) {
 		memset(packet, 0, sizeof(struct cmd_packet));
-		return 0;
+		return MCTP_ERROR;
 	}
 
 	packet->dest_addr = mctp_inst->medium_conf.i3c_conf.addr;
@@ -72,7 +72,7 @@ static uint16_t mctp_i3c_tmq_read(void *mctp_p, void *msg_p)
 		return MCTP_ERROR;
 	}
 
-	LOG_HEXDUMP_INF(&i3c_msg.data[0], i3c_msg.rx_len, "mctp_i3c_read_smq msg dump");
+	LOG_HEXDUMP_DBG(&i3c_msg.data[0], i3c_msg.rx_len, "mctp_i3c_read_smq msg dump");
 
 	memcpy(packet->data, &i3c_msg.data[0], i3c_msg.rx_len);
 	return MCTP_SUCCESS;
@@ -100,7 +100,7 @@ static uint16_t mctp_i3c_tmq_write(void *mctp_p, void *msg_p)
 	memcpy(&i3c_msg.data[0], tx_msg->buf, len);
 	i3c_msg.tx_len = len;
 
-	LOG_HEXDUMP_INF(&i3c_msg.data[0], i3c_msg.tx_len, "mctp_i3c_write_tmq msg dump");
+	LOG_HEXDUMP_DBG(&i3c_msg.data[0], i3c_msg.tx_len, "mctp_i3c_write_tmq msg dump");
 
 	ret = i3c_tmq_write(&i3c_msg);
 	if (ret) {
@@ -163,6 +163,19 @@ mctp *mctp_i3c_target_get_mctp_inst(uint8_t index)
 	return i3c_devs[index].mctp_i3c_inst.mctp_inst;
 }
 
+mctp *mctp_i3c_target_get_by_bus(uint8_t bus)
+{
+	int i;
+	mctp_i3c_dev *i3c_dev_p;
+
+	for (i = 0; i < ARRAY_SIZE(i3c_devs); i++) {
+		i3c_dev_p = &i3c_devs[i];
+		if (i3c_dev_p->i3c_conf.bus == bus)
+			return i3c_devs[i].mctp_i3c_inst.mctp_inst;
+	}
+	return NULL;
+}
+
 void mctp_i3c_target_intf_init(void)
 {
 	int i;
@@ -178,9 +191,12 @@ void mctp_i3c_target_intf_init(void)
 	for (i = 0; i < ARRAY_SIZE(i3c_devs); i++) {
 		i3c_dev_p = &i3c_devs[i];
 		mctp_i3c_instance = &i3c_dev_p->mctp_i3c_inst;
-		if (mctp_i3c_instance->mctp_inst != NULL)
-			if (!mctp_i3c_instance->mctp_inst->is_servcie_start)
+		if (mctp_i3c_instance->mctp_inst != NULL) {
+			if (!mctp_i3c_instance->mctp_inst->is_servcie_start) {
 				free(mctp_i3c_instance->mctp_inst);
+				mctp_i3c_instance->mctp_inst = NULL;
+			}
+		}
 
 		if (mctp_i3c_instance->mctp_inst == NULL) {
 			mctp_i3c_instance->mctp_inst = mctp_init();
@@ -242,7 +258,9 @@ error:
 	for (i = 0; i < ARRAY_SIZE(i3c_devs); i++) {
 		i3c_dev_p = &i3c_devs[i];
 		mctp_i3c_instance = &i3c_dev_p->mctp_i3c_inst;
-		if (mctp_i3c_instance->mctp_inst != NULL)
-				free(mctp_i3c_instance->mctp_inst);
+		if (mctp_i3c_instance->mctp_inst != NULL) {
+			free(mctp_i3c_instance->mctp_inst);
+			mctp_i3c_instance->mctp_inst = NULL;
+		}
 	}
 }

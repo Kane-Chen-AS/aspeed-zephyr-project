@@ -63,4 +63,5 @@ void mctp_i3c_target_intf_init(void);
 uint8_t mctp_i3c_target_mctp_stop(void);
 uint8_t mctp_i3c_target_get_dev_counts(void);
 mctp *mctp_i3c_target_get_mctp_inst(uint8_t index);
+mctp *mctp_i3c_target_get_by_bus(uint8_t bus);
 #endif

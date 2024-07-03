@@ -18,9 +18,14 @@ int random_callback(void *context, unsigned char *output, size_t output_len)
 	return 0;
 }
 
-void *spdm_context_create()
+void *spdm_context_create(void)
 {
 	struct spdm_context *context = (struct spdm_context *)malloc(sizeof(struct spdm_context));
+
+	if (context == NULL) {
+		LOG_ERR("Failed to allocate memory for context");
+		return NULL;
+	}
 
 	context->release_connection_data = NULL;
 	context->connection_state = SPDM_STATE_NOT_READY;
@@ -39,22 +44,36 @@ void *spdm_context_create()
 
 	/* Set CT to 32768us due to mbedtls ecdsa */
 	context->local.capabilities.ct_exponent = 15;
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER) || defined(CONFIG_SECURE_CONNECTION_RESPONDER)
+	context->local.capabilities.flags = SPDM_CHAL_CAP | SPDM_CERT_CAP | SPDM_MEAS_CAP_SIG |
+		SPDM_KEY_EX_CAP | SPDM_KEY_UPD_CAP | SPDM_HBEAT_CAP | SPDM_ENCRYPT_CAP |
+		SPDM_MAC_CAP | SPDM_PSK_CAP | SPDM_HANDSHAKE_IN_THE_CLEAR_CAP;
+
+	/*
+	 * SPDM_ENCAP_CAP and SPDM_MUT_AUTH_CAP should be set at the same time
+	 * for Mutual Authentication
+	 */
+	context->local.capabilities.flags |= (SPDM_MUT_AUTH_CAP | SPDM_ENCAP_CAP);
+#else
 	context->local.capabilities.flags = SPDM_CHAL_CAP | SPDM_CERT_CAP | SPDM_MEAS_CAP_SIG;
+#endif
 	context->local.capabilities.data_transfer_size = 256;
 	context->local.capabilities.max_spdm_msg_size = 256;
 
 	context->local.algorithms.length = 0;
 	context->local.algorithms.measurement_spec_sel = SPDM_MEASUREMENT_BLOCK_DMTF_SPEC;
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER) || defined(CONFIG_SECURE_CONNECTION_RESPONDER)
+	context->local.algorithms.other_param_sel = GENERAL_OPAQUE_DATA_MODE;
+#else
 	context->local.algorithms.other_param_sel = 0;
+#endif
 	context->local.algorithms.measurement_hash_algo = SPDM_ALGORITHMS_MEAS_HASH_TPM_ALG_SHA_384;
-	context->local.algorithms.base_asym_sel =SPDM_ALGORITHMS_BASE_ALGO_TPM_ALG_ECDSA_ECC_NIST_P384;
+	context->local.algorithms.base_asym_sel =  SPDM_ALGORITHMS_BASE_ALGO_TPM_ALG_ECDSA_ECC_NIST_P384;
 	context->local.algorithms.base_hash_sel = SPDM_ALGORITHMS_BASE_HASH_TPM_ALG_SHA_384;
-#if 1
 	context->local.algorithms.ext_asym_sel_count = 0;
 	context->local.algorithms.ext_hash_sel_count = 0;
 	context->local.algorithms.ext_asym_sel[0] = 0;
 	context->local.algorithms.ext_hash_sel[0] = 0;
-#endif
 
 	context->local.certificate.slot_mask = 0;
 	context->remote.certificate.slot_mask = 0;
@@ -81,7 +100,8 @@ void *spdm_context_create()
 	mbedtls_sha512_init(&context->l1l2_context);
 	mbedtls_sha512_starts(&context->l1l2_context, /* is384 */ 1);
 
-	mbedtls_ecp_keypair_init(&context->key_pair);
+	mbedtls_ecp_keypair_init(&context->rsp_key_pair);
+	mbedtls_ecp_keypair_init(&context->req_key_pair);
 
 	context->random_callback = random_callback;
 
@@ -92,7 +112,7 @@ void spdm_context_release(void *ctx)
 {
 	struct spdm_context *context = (struct spdm_context *)ctx;
 
-	for (size_t slot_id=0; slot_id<8; ++slot_id) {
+	for (size_t slot_id = 0; slot_id < 8; ++slot_id) {
 		if (context->local.certificate.certs[slot_id].data) {
 			free(context->local.certificate.certs[slot_id].data);
 			context->local.certificate.certs[slot_id].data = NULL;
@@ -107,7 +127,8 @@ void spdm_context_release(void *ctx)
 		mbedtls_x509_crt_free(&context->remote.certificate.certs[slot_id].chain);
 	}
 
-	mbedtls_ecp_keypair_free(&context->key_pair);
+	mbedtls_ecp_keypair_free(&context->rsp_key_pair);
+	mbedtls_ecp_keypair_free(&context->req_key_pair);
 	spdm_buffer_release(&context->message_a);
 #if defined(SPDM_TRANSCRIPT)
 	spdm_buffer_release(&context->message_b);
@@ -125,12 +146,11 @@ void spdm_context_release(void *ctx)
 
 int spdm_load_certificate(void *ctx, bool remote, uint8_t slot_id, void *cert_data, uint16_t cert_len)
 {
-	struct spdm_context *context = (struct spdm_context*)ctx;
+	struct spdm_context *context = (struct spdm_context *)ctx;
 	struct spdm_certificate_info *cert_info = &context->local.certificate;
 
-	if (remote) {
+	if (remote)
 		cert_info = &context->remote.certificate;
-	}
 
 	if (slot_id > 7) {
 		LOG_ERR("Invalid slot_id[%d]", slot_id);
@@ -146,6 +166,10 @@ int spdm_load_certificate(void *ctx, bool remote, uint8_t slot_id, void *cert_da
 	cert_info->slot_mask |= 1 << slot_id;
 
 	cert_info->certs[slot_id].data = malloc(cert_len + 4 + 48);
+	if (cert_info->certs[slot_id].data == NULL) {
+		LOG_ERR("Failed to allocate for certificate (%d)", cert_len);
+		return -1;
+	}
 	memcpy(cert_info->certs[slot_id].data + 4 + 48, cert_data, cert_len);
 	cert_info->certs[slot_id].size = cert_len + 4 + 48;
 	cert_info->certs[slot_id].data[0] = (cert_len + 4 + 48) & 0xff;
@@ -154,6 +178,9 @@ int spdm_load_certificate(void *ctx, bool remote, uint8_t slot_id, void *cert_da
 	/* Hash the  Root Cert */
 	// TODO: Find the root cert length
 	mbedtls_sha512(cert_data, 468, cert_info->certs[slot_id].data + 4, 1);
+
+	mbedtls_sha512(cert_info->certs[slot_id].data, cert_info->certs[slot_id].size,
+		cert_info->certs[slot_id].digest, 1);
 
 	return 0;
 }
@@ -164,7 +191,7 @@ int spdm_load_root_certificate(void *cert_data, uint16_t cert_len)
 	return mbedtls_x509_crt_parse_der_nocopy(&system_root_ca, cert_data, cert_len);
 }
 
-mbedtls_x509_crt* spdm_get_root_certificate()
+mbedtls_x509_crt *spdm_get_root_certificate(void)
 {
 	return &system_root_ca;
 }
@@ -174,7 +201,7 @@ size_t spdm_context_base_hash_size(void *ctx)
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	size_t ret = -1;
 
-	switch(context->remote.algorithms.base_hash_sel) {
+	switch (context->remote.algorithms.base_hash_sel) {
 	case SPDM_ALGORITHMS_BASE_HASH_TPM_ALG_SHA_384:
 		ret = 48;
 		break;
@@ -191,7 +218,7 @@ size_t spdm_context_base_algo_size(void *ctx)
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	size_t ret = -1;
 
-	switch(context->remote.algorithms.base_asym_sel) {
+	switch (context->remote.algorithms.base_asym_sel) {
 	case SPDM_ALGORITHMS_BASE_ALGO_TPM_ALG_ECDSA_ECC_NIST_P384:
 		ret = 48 * 2;
 		break;
@@ -209,7 +236,7 @@ size_t spdm_context_measurement_hash_size(void *ctx)
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	size_t ret = -1;
 
-	switch(context->remote.algorithms.base_hash_sel) {
+	switch (context->remote.algorithms.base_hash_sel) {
 	case SPDM_ALGORITHMS_MEAS_HASH_TPM_ALG_SHA_384:
 		ret = 48;
 		break;
@@ -269,6 +296,7 @@ void spdm_context_update_l1l2_hash_buffer(void *ctx, void *buf)
 {
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	struct spdm_buffer *buffer = (struct spdm_buffer *)buf;
+
 	LOG_HEXDUMP_DBG(buffer->data, buffer->write_ptr, "UPDATE L1L2 BUFFER VCA");
 
 	mbedtls_sha512_update(&context->l1l2_context, buffer->data, buffer->write_ptr);

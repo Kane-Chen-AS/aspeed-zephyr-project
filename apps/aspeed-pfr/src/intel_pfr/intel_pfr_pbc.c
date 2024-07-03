@@ -275,7 +275,6 @@ int get_total_pfm_size(struct pfr_manifest *manifest, uint32_t signed_pfm_offset
 #endif
 	uint32_t image_type = manifest->image_type;
 	uint32_t cap_pfm_body_offset = cap_pfm_body_start_addr;
-	LOG_INF("To read %x from image %d", cap_pfm_body_offset, image_type);
 
 	while (cap_pfm_body_offset < cap_pfm_body_end_addr) {
 		pfr_spi_read(image_type, cap_pfm_body_offset, sizeof(PFM_SPI_DEFINITION),
@@ -529,7 +528,7 @@ int decompress_afm_capsule(struct pfr_manifest *pfr_manifest,
 		return -1;
 	}
 
-	LOG_INF("to copy AFM device data from image (%d,%x) to image (%d, %x)", pfr_manifest->image_type,
+	LOG_INF("Copy AFM device data from image (%d,%x) to image (%d, %x)", pfr_manifest->image_type,
 			afm_start_addr_in_pfm, pfr_manifest->image_type, afm_start_addr);
 	pfr_spi_erase_region(pfr_manifest->image_type, true, afm_start_addr, AFM_BODY_SIZE);
 	if (pfr_spi_region_read_write_between_spi(pfr_manifest->image_type, afm_start_addr_in_pfm,

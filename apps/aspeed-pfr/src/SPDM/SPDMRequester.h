@@ -17,8 +17,9 @@
 #define SPDM_REQ_EVT_ENABLE		BIT(0)
 
 int spdm_send_request(void *ctx, void *req_msg, void *rsp_msg);
-void spdm_enable_attester();
-void spdm_run_attester();
-void spdm_run_attester_i3c();
-void spdm_stop_attester();
-uint32_t spdm_get_attester();
+int spdm_send_request_enc(void *ctx, void *req, void *rsp, uint32_t session_id);
+void spdm_enable_attester(void);
+void spdm_run_attester(void);
+void spdm_run_attester_i3c(void);
+void spdm_stop_attester(void);
+uint32_t spdm_get_attester(void);

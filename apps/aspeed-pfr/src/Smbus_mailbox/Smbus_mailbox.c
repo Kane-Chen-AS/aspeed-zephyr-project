@@ -32,6 +32,7 @@
 #include "AspeedStateMachine/AspeedStateMachine.h"
 #include "watchdog_timer/wdt_utils.h"
 #include "watchdog_timer/wdt_handler.h"
+#include "cmd_interface/cmd_channel.h"
 
 LOG_MODULE_REGISTER(mailbox, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -53,8 +54,8 @@ uint8_t gPitPassword[8];
 uint8_t gFifoData = 0;
 uint8_t gProvisionData = 0;
 CPLD_STATUS cpld_update_status;
-
 extern uint8_t gWdtBootStatus;
+uint8_t curr_secure_state = 0xff;
 
 void ResetMailBox(void)
 {
@@ -168,7 +169,7 @@ K_SEM_DEFINE(bmc_ufm_smbus_ownership_sem, 0, 1);
 K_SEM_DEFINE(pch_ufm_smbus_ownership_sem, 0, 1);
 
 struct k_mutex write_fifo_mutex;
-
+#if defined(CONFIG_PFR_MCTP)
 int swmbx_mctp_i3c_doe_msg_read_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data)
 {
 	if (data_len > sizeof(gReadFifoData))
@@ -180,8 +181,10 @@ int swmbx_mctp_i3c_doe_msg_read_handler(uint8_t addr, uint8_t data_len, uint8_t 
 				goto error;
 		}
 	} else {
-		if (swmbx_read(gSwMbxDev, false, addr, swmbx_data))
-			goto error;
+		for (int i = 0; i < data_len; i++) {
+			if (swmbx_read(gSwMbxDev, false, addr + i, &swmbx_data[i]))
+				goto error;
+		}
 	}
 
 	return 0;
@@ -191,12 +194,21 @@ error:
 	return -1;
 }
 
-int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data)
+int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data, int channel_id, uint8_t s_eid)
 {
 	int status;
 	union aspeed_event_data data = {0};
+	bool isBMC = false;
 	data.bit8[0] = addr;
 	data.bit8[1] = *swmbx_data;
+
+	if ((channel_id & CMD_CHANNEL_I3C_BASE) == 0) {
+		LOG_ERR("I2C request should not go through this path");
+		return -1;
+	}
+
+	if (s_eid == MCTP_I3C_REGISTRATION_EID)
+		isBMC = true;
 
 	switch(addr) {
 	case UfmCommand:
@@ -210,6 +222,7 @@ int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t
 		GenerateStateMachineEvent(PROVISION_CMD, data.ptr);
 		break;
 	case UfmWriteFIFO:
+		/* ToDo : Intel reference code blocks this operation from BIOS */
 		status = k_mutex_lock(&write_fifo_mutex, K_MSEC(1000));
 		if (status) {
 			LOG_ERR("Get write_fifo_mutex timeout, ret %d", status);
@@ -227,22 +240,65 @@ int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t
 		}
 		break;
 	case BmcCheckpoint:
+		if (isBMC == true) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(WDT_CHECKPOINT, data.ptr);
+		}
+		break;
 	case AcmCheckpoint:
 	case BiosCheckpoint:
-		if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
-			goto error;
-		GenerateStateMachineEvent(WDT_CHECKPOINT, data.ptr);
+		/* ToDo : Intel reference code blocks this operation from BIOS */
+		if (isBMC == false) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(WDT_CHECKPOINT, data.ptr);
+		}
+		break;
+	case PchUpdateIntent:
+		/* ToDo : Intel reference code blocks this operation from BIOS */
+		if (isBMC == false) {
+			// Only Bit[1:0] and Bit[7:6] have R/W access to PCH/CPU. Other bits are
+			// read only.
+			data.bit8[1] &= PchActiveRecoveryDynamicUpdateAtReset;
+			if (swmbx_write(gSwMbxDev, false, PchUpdateIntent, &data.bit8[1]))
+				goto error;
+			if (data.bit8[1] & PchActiveRecoveryDynamicUpdateAtReset)
+				GenerateStateMachineEvent(UPDATE_REQUESTED, data.ptr);
+		}
 		break;
 	case BmcUpdateIntent:
-		if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
-			goto error;
-		GenerateStateMachineEvent(UPDATE_REQUESTED, data.ptr);
+		if (isBMC == true) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(UPDATE_REQUESTED, data.ptr);
+		}
 		break;
 	case BmcUpdateIntent2:
+		if (isBMC == true) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(UPDATE_INTENT_2_REQUESTED, data.ptr);
+		}
+		break;
 	case PchUpdateIntent2:
-		if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
-			goto error;
-		GenerateStateMachineEvent(UPDATE_INTENT_2_REQUESTED, data.ptr);
+		/* ToDo : Intel reference code blocks this operation from BIOS */
+		if (isBMC == false) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(UPDATE_INTENT_2_REQUESTED, data.ptr);
+		}
+		break;
+	case UfmSmbusOwnership:
+		if (isBMC == true) {
+			// BMC has R/W access to Bit[1:0] and Bit[5].
+			data.bit8[1] &= 0x23;
+			swmbx_write(gSwMbxDev, false, UfmSmbusOwnership, &data.bit8[1]);
+		} else {
+			// PCH/CPU has R/W access to only Bit[1:0]
+			data.bit8[1] &= 0x3;
+			swmbx_write(gSwMbxDev, false, UfmSmbusOwnership, &data.bit8[1]);
+		}
 		break;
 	default:
 		LOG_ERR("Unsupported mailbox command");
@@ -255,6 +311,7 @@ error:
 	LOG_ERR("Failed to write mailbox");
 	return -1;
 }
+#endif
 
 void swmbx_notifyee_main(void *a, void *b, void *c)
 {
@@ -435,60 +492,7 @@ void InitializeSoftwareMailbox(void)
 	swmbx_update_fifo(swmbx_dev, &ufm_write_fifo_state_sem, 0, UfmWriteFIFO, 0x40, SWMBX_FIFO_NOTIFY_STOP, true);
 	swmbx_update_fifo(swmbx_dev, &ufm_read_fifo_state_sem, 1, UfmReadFIFO, 0x40, SWMBX_FIFO_NOTIFY_STOP, true);
 
-	/* swmbx_update_notify(dev, port, sem, addr, enable) */
-	/* From BMC */
-	swmbx_update_notify(swmbx_dev, 0x0, &ufm_write_fifo_data_sem, UfmWriteFIFO, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &ufm_provision_trigger_sem, UfmCmdTriggerValue, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &bmc_update_intent_sem, BmcUpdateIntent, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &bmc_checkpoint_sem, BmcCheckpoint, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &bmc_update_intent2_sem,
-			BmcUpdateIntent2, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &bmc_ufm_smbus_ownership_sem, UfmSmbusOwnership, true);
-
-	/* From PCH */
-	swmbx_update_notify(swmbx_dev, 0x1, &ufm_write_fifo_data_sem, UfmWriteFIFO, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &ufm_provision_trigger_sem, UfmCmdTriggerValue, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &pch_update_intent_sem, PchUpdateIntent, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &acm_checkpoint_sem, AcmCheckpoint, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &bios_checkpoint_sem, BiosCheckpoint, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &pch_update_intent2_sem, PchUpdateIntent2, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &pch_ufm_smbus_ownership_sem, UfmSmbusOwnership, true);
-
-	/* Protect bit:
-	 * 0 means readable/writable
-	 * 1 means read-only
-	 *
-	 * Port and access_control[]:
-	 * 0 for BMC
-	 * 1 for PCH
-	 */
-	uint32_t access_control[2][8] = {
-		/* BMC */
-		{
-			0xfff704ff, // 1fh ~ 00h
-			0xffffffff, // 3fh ~ 20h CPLD RoT Hash
-			0xffffffff, // 5fh ~ 40h CPLD RoT Hash
-			0xfffffff2, // 7fh ~ 60h
-			0xffffffff, // 9fh ~ 80h ACM/BIOS Scrachpad
-			0xffffffff, // bfh ~ a0h ACM/BIOS Scrachpad
-			0x00000000, // dfh ~ c0h BMC scrachpad
-			0x00000000, // ffh ~ e0h BMC scrachpad
-		},
-		/* PCH */
-		{
-			0xfff884ff, // 1fh ~ 00h
-			0xffffffff, // 3fh ~ 20h CPLD RoT Hash
-			0xffffffff, // 5fh ~ 40h CPLD RoT Hash
-			0xfffffff5, // 7fh ~ 60h
-			0x00000000, // 9fh ~ 80h ACM/BIOS Scrachpad
-			0x00000000, // bfh ~ a0h ACM/BIOS Scrachpad
-			0xffffffff, // dfh ~ c0h BMC scrachpad
-			0xffffffff, // ffh ~ e0h BMC scrachpad
-		},
-	};
-	swmbx_apply_protect(swmbx_dev, 0, access_control[0], 0, 8);
-	swmbx_apply_protect(swmbx_dev, 1, access_control[1], 0, 8);
-
+	set_secure_connection_state(false);
 	/* Register slave device to bus device */
 	const struct device *dev = NULL;
 
@@ -1294,6 +1298,10 @@ void UpdateBmcCheckpoint(byte Data)
 		SetBmcCheckpoint(Data);
 		bmc_wdt_handler(Data);
 	}
+#if defined(CONFIG_SECURE_CONNECTION_RESPONDER)
+	if (gWdtBootStatus & WDT_BMC_BOOT_DONE_MASK)
+		set_secure_connection_state(true);
+#endif
 }
 
 #if defined(CONFIG_INTEL_PFR)
@@ -1334,6 +1342,148 @@ void UpdateBiosCheckpoint(byte Data)
 	}
 }
 
+void set_swmbx_state(bool value)
+{
+	if (curr_secure_state == (uint8_t)value) {
+		// State is not changed, don't need to reconfigure the settings
+		return;
+	} else
+		curr_secure_state = value;
+
+	LOG_INF("set secure state to %s mode", (value)?"restrict":"loose");
+
+	if (value) {
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, UfmWriteFIFO, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, UfmCmdTriggerValue, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcUpdateIntent, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcCheckpoint, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcUpdateIntent2, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, UfmSmbusOwnership, false);
+
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, UfmWriteFIFO, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, UfmCmdTriggerValue, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, PchUpdateIntent, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, AcmCheckpoint, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, BiosCheckpoint, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, PchUpdateIntent2, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, UfmSmbusOwnership, false);
+		/* Protect bit:
+		 * 0 means readable/writable
+		 * 1 means read-only
+		 *
+		 * Port and access_control[]:
+		 * 0 for BMC
+		 * 1 for PCH
+		 * when secure mode is enabled, to make all registers to be read-only in swmbx interface
+		 */
+		uint32_t access_control[2][8] = {
+			/* BMC */
+			{
+				0xffff7fff, // 1fh ~ 00h
+				0xffffffff, // 3fh ~ 20h CPLD RoT Hash
+				0xffffffff, // 5fh ~ 40h CPLD RoT Hash
+				0xffffffff, // 7fh ~ 60h
+				0xffffffff, // 9fh ~ 80h ACM/BIOS Scrachpad
+				0xffffffff, // bfh ~ a0h ACM/BIOS Scrachpad
+				0xffffffff, // dfh ~ c0h BMC scrachpad
+				0xffffffff, // ffh ~ e0h BMC scrachpad
+			},
+			/* PCH */
+			{
+				0xffffffff, // 1fh ~ 00h
+				0xffffffff, // 3fh ~ 20h CPLD RoT Hash
+				0xffffffff, // 5fh ~ 40h CPLD RoT Hash
+				0xffffffff, // 7fh ~ 60h
+				0xffffffff, // 9fh ~ 80h ACM/BIOS Scrachpad
+				0xffffffff, // bfh ~ a0h ACM/BIOS Scrachpad
+				0xffffffff, // dfh ~ c0h BMC scrachpad
+				0xffffffff, // ffh ~ e0h BMC scrachpad
+			},
+		};
+		swmbx_apply_protect(gSwMbxDev, 0, access_control[0], 0, 8);
+		swmbx_apply_protect(gSwMbxDev, 1, access_control[1], 0, 8);
+	} else {
+		swmbx_update_notify(gSwMbxDev, 0x0, &ufm_write_fifo_data_sem, UfmWriteFIFO, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &ufm_provision_trigger_sem,
+				UfmCmdTriggerValue, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_update_intent_sem, BmcUpdateIntent, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_checkpoint_sem, BmcCheckpoint, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_update_intent2_sem,
+				BmcUpdateIntent2, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_ufm_smbus_ownership_sem,
+				UfmSmbusOwnership, true);
+
+		swmbx_update_notify(gSwMbxDev, 0x1, &ufm_write_fifo_data_sem, UfmWriteFIFO, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &ufm_provision_trigger_sem,
+				UfmCmdTriggerValue, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &pch_update_intent_sem, PchUpdateIntent, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &acm_checkpoint_sem, AcmCheckpoint, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &bios_checkpoint_sem, BiosCheckpoint, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &pch_update_intent2_sem, PchUpdateIntent2, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &pch_ufm_smbus_ownership_sem,
+				UfmSmbusOwnership, true);
+		/* Protect bit:
+		 * 0 means readable/writable
+		 * 1 means read-only
+		 *
+		 * Port and access_control[]:
+		 * 0 for BMC
+		 * 1 for PCH
+		 */
+		uint32_t access_control[2][8] = {
+			/* BMC */
+			{
+				0xfff704ff, // 1fh ~ 00h
+				0xffffffff, // 3fh ~ 20h CPLD RoT Hash
+				0xffffffff, // 5fh ~ 40h CPLD RoT Hash
+				0xfffffff2, // 7fh ~ 60h
+				0xffffffff, // 9fh ~ 80h ACM/BIOS Scrachpad
+				0xffffffff, // bfh ~ a0h ACM/BIOS Scrachpad
+				0x00000000, // dfh ~ c0h BMC scrachpad
+				0x00000000, // ffh ~ e0h BMC scrachpad
+			},
+			/* PCH */
+			{
+				0xfff884ff, // 1fh ~ 00h
+				0xffffffff, // 3fh ~ 20h CPLD RoT Hash
+				0xffffffff, // 5fh ~ 40h CPLD RoT Hash
+				0xfffffff5, // 7fh ~ 60h
+				0x00000000, // 9fh ~ 80h ACM/BIOS Scrachpad
+				0x00000000, // bfh ~ a0h ACM/BIOS Scrachpad
+				0xffffffff, // dfh ~ c0h BMC scrachpad
+				0xffffffff, // ffh ~ e0h BMC scrachpad
+			},
+		};
+		swmbx_apply_protect(gSwMbxDev, 0, access_control[0], 0, 8);
+		swmbx_apply_protect(gSwMbxDev, 1, access_control[1], 0, 8);
+	}
+}
+
+void set_secure_connection_state(bool enable)
+{
+	uint8_t ufm_status;
+
+	if (enable == false) {
+		set_swmbx_state(false);
+		return;
+	}
+
+	ufm_status = GetUfmStatusValue();
+	if (CONFIG_SECURE_LOCK_MODE == SECURE_CONNECTION_RESTRICT_MODE) {
+		if (ufm_status & UFM_PROVISIONED)
+			set_swmbx_state(true);
+		else
+			set_swmbx_state(false);
+	} else if (CONFIG_SECURE_LOCK_MODE == SECURE_CONNECTION_LOOSE_MODE) {
+		if (ufm_status & UFM_LOCKED)
+			set_swmbx_state(true);
+		else
+			set_swmbx_state(false);
+	} else {
+		set_swmbx_state(false);
+	}
+}
+
 /**
  * Function to show current provision data
  *
@@ -1346,7 +1496,6 @@ void show_provision_info(void)
 	uint32_t unprovision = 0xffffffff;
 
 	ufm_status = GetUfmStatusValue();
-
 	memset(tmpbuf, 0xff, sizeof(tmpbuf));
 	get_provision_data_in_flash(BMC_ACTIVE_PFM_OFFSET, tmpbuf, BMC_OFFSET_SIZE);
 	if (memcmp(tmpbuf, &unprovision, 4) == 0) {
@@ -1366,4 +1515,5 @@ void show_provision_info(void)
 	}
 
 	LOG_INF("UFM/Provisioning Status Code : %x", ufm_status);
+	LOG_INF("Secure state : %s", (curr_secure_state == true)?"enabled":"disabled");
 }

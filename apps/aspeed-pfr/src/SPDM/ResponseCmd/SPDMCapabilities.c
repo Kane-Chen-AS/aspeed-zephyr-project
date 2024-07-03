@@ -41,12 +41,14 @@ int spdm_handle_get_capabilities(void *ctx, void *req, void *rsp)
 		spdm_buffer_get_u8(&req_msg->buffer, &context->remote.capabilities.ct_exponent);
 		spdm_buffer_get_reserved(&req_msg->buffer, 2);
 		spdm_buffer_get_u32(&req_msg->buffer, &context->remote.capabilities.flags);
+		context->local.version.version_number_selected = SPDM_VERSION_11;
 	}
 
 	/* SPDM 1.2 */
 	if (req_msg->header.spdm_version >= SPDM_VERSION_12) {
 		spdm_buffer_get_u32(&req_msg->buffer, &context->remote.capabilities.data_transfer_size);
 		spdm_buffer_get_u32(&req_msg->buffer, &context->remote.capabilities.max_spdm_msg_size);
+		context->local.version.version_number_selected = SPDM_VERSION_12;
 	}
 
 	/* Set the flags according to *_CAP: serializer */
