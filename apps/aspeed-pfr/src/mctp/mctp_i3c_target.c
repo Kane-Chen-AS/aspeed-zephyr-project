@@ -21,21 +21,18 @@ extern const struct device dev_i3c_tmq[I3C_MAX_NUM];
 #define I3C_BUS_CPU          0x00
 #define I3C_BUS_BMC          0x02
 
-typedef struct _mctp_i3c_dev {
-	mctp_i3c mctp_i3c_inst;
-	mctp_i3c_conf i3c_conf;
-} mctp_i3c_dev;
-
 mctp_i3c_dev i3c_devs[] = {
 	{
 		// For BMC to brige CPU's mctp msg to PFR
 		.i3c_conf.bus = I3C_BUS_CPU,
 		.i3c_conf.addr = 0, // will be assigned by BMC
+		.i3c_conf.dest_eid = MCTP_I3C_CPU1_EID,
 	},
 	{
 		// For BMC to send mctp msg to PFR
 		.i3c_conf.bus = I3C_BUS_BMC,
 		.i3c_conf.addr = 0, // will be assigned by BMC
+		.i3c_conf.dest_eid = MCTP_I3C_REGISTRATION_EID,
 	},
 };
 
@@ -154,6 +151,16 @@ uint8_t mctp_i3c_target_mctp_stop(void)
 				DEVICE_MANAGER_SELF_DEVICE_NUM, DEVICE_MANAGER_SEND_DISCOVERY_NOTIFY);
 	}
 	return 0;
+}
+
+uint8_t mctp_i3c_target_get_dev_counts(void)
+{
+	return(ARRAY_SIZE(i3c_devs));
+}
+
+mctp *mctp_i3c_target_get_mctp_inst(uint8_t index)
+{
+	return i3c_devs[index].mctp_i3c_inst.mctp_inst;
 }
 
 void mctp_i3c_target_intf_init(void)

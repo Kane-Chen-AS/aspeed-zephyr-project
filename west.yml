@@ -23,7 +23,7 @@ manifest:
           - mbedtls
     - name: cerberus
       remote: gerrit
-      revision: 2da20db7d1887db023fe3188bd69dcb8e807af12
+      revision: c9dd60bab93f8f509353474727f832b519b0f8e5
       path: middlewares/cerberus
     - name: mcuboot
       remote: gerrit

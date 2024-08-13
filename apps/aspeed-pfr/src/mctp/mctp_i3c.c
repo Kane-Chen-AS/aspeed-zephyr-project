@@ -42,9 +42,6 @@ LOG_MODULE_REGISTER(mctp_i3c);
 #define I3C_2 DEVICE_DT_NAME(DT_NODELABEL(i3c2))
 #define I3C_3 DEVICE_DT_NAME(DT_NODELABEL(i3c3))
 
-#define MCTP_I3C_CPU0_EID                   0x1D
-#define MCTP_I3C_CPU1_EID                   0x9D
-#define MCTP_I3C_REGISTRATION_EID           0x1D
 #define MCTP_DOE_REGISTRATION_CMD           0x4
 
 static uint8_t i3c_data_in[256];
@@ -238,7 +235,25 @@ int mctp_i3c_send_eid_announcement(mctp *mctp_instance, int *duration)
 	} else if (mctp_instance == mctp_i3c_cpu1_inst.mctp_inst) {
 		dest_eid = MCTP_I3C_CPU1_EID;
 	} else {
+#if defined(CONFIG_PFR_MCTP_I3C_5_0)
+		int i, i3c_dev_counts;
+		bool found_mctp_inst = false;
+
+		i3c_dev_counts = mctp_i3c_target_get_dev_counts();
+
+		for (i = 0; i < i3c_dev_counts; i++) {
+			if (mctp_instance == mctp_i3c_target_get_mctp_inst(i)) {
+				dest_eid = mctp_instance->medium_conf.i3c_conf.dest_eid;
+				found_mctp_inst = true;
+				break;
+			}
+		}
+
+		if (!found_mctp_inst)
+			return status;
+#else
 		return status;
+#endif
 	}
 
 	status = mctp_interface_issue_request(mctp_interface, &mctp_instance->mctp_cmd_channel,

@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include "mctp/mctp_interface.h"
 #include "mctp.h"
+#include "mctp_i3c.h"
 #include "plat_mctp.h"
 #include "cmd_interface/device_manager.h"
 #include "logging/logging_wrapper.h"
@@ -69,21 +70,28 @@ static int cmd_mctp_send_msg(const struct shell *shell, size_t argc, char **argv
 static int cmd_mctp_send_msg_i3c(const struct shell *shell, size_t argc, char **argv)
 {
 	extern mctp *mctp_i3c_bmc_inst;
+	extern mctp *mctp_i3c_cpu0_inst;
 	struct mctp_interface *mctp_interface = NULL;
 	mctp *mctp_inst = NULL;
 	int req_len = argc - 4;
 	int argc_req_idx = 4;
 	uint8_t dst_addr;
 	uint8_t dst_eid;
-	uint8_t bus_num;
+	uint8_t inst = 0;
 	int status;
 	int i;
 
-	bus_num = strtol(argv[1], NULL, 16);
+	if (!strcmp(argv[1], "bmc"))
+		inst = 1;
+
 	dst_addr = strtol(argv[2], NULL, 16);
 	dst_eid = strtol(argv[3], NULL, 16);
 
-	mctp_inst = mctp_i3c_bmc_inst;
+#if defined(CONFIG_PFR_MCTP_I3C_5_0)
+	mctp_inst = mctp_i3c_target_get_mctp_inst(inst);
+#else
+	mctp_inst = (inst) ? mctp_i3c_bmc_inst : mctp_i3c_cpu0_inst;
+#endif
 	if (mctp_inst == NULL) {
 		shell_error(shell, "mctp instance not fould");
 		return 0;
@@ -277,7 +285,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_mctp_log_cmds,
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_mctp_cmds,
 	SHELL_CMD_ARG(send, NULL, "<bus> <dest_addr> <dest_eid> <msg_type> <rq/d/ins> <cmd_code> <option:payload>", cmd_mctp_send_msg, 7, 255),
 #if defined(CONFIG_PFR_MCTP_I3C) && defined(CONFIG_I3C_ASPEED)
-	SHELL_CMD_ARG(send_i3c, NULL, "<bus> <dest_addr> <dest_eid> <payload>", cmd_mctp_send_msg_i3c, 4, 255),
+	SHELL_CMD_ARG(send_i3c, NULL, "<bmc|cpu> <dest_addr> <dest_eid> <payload>", cmd_mctp_send_msg_i3c, 4, 255),
 #endif
 	SHELL_CMD_ARG(echo, NULL, "<bus> <dest_addr> <dest_eid> <payload_length> <option:default 1 time>", cmd_mctp_echo_test, 5, 1),
 	SHELL_CMD_ARG(device, NULL, "<bus>", cmd_mctp_show_device, 2, 0),
