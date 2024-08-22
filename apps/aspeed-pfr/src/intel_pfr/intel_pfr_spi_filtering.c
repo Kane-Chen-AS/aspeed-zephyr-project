@@ -191,6 +191,7 @@ void apply_pfm_protection(int spi_device_id)
 			// Ignore all smbus rules in pch flash.
 			if (spi_device_id >= PCH_SPI) {
 				LOG_WRN("Found SMBUS Rules in PCH SPI, ignoring the rule.");
+				pfm_region_Start += sizeof(PFM_SMBUS_RULE);
 				break;
 			}
 			/* SMBus Rule Definition: 0x02 */
