@@ -2064,22 +2064,22 @@ void do_reboot(void *o)
 }
 
 static const struct smf_state state_table[] = {
-	[BOOT] = SMF_CREATE_STATE(NULL, NULL, NULL, NULL),
-	[INIT] = SMF_CREATE_STATE(NULL, do_init, NULL, NULL),
-	[ROT_RECOVERY] = SMF_CREATE_STATE(NULL, do_rot_recovery, NULL, NULL),
-	[TMIN1] = SMF_CREATE_STATE(enter_tmin1, NULL, NULL, NULL),
-	[FIRMWARE_VERIFY] = SMF_CREATE_STATE(NULL, do_verify, NULL, &state_table[TMIN1]),
-	[FIRMWARE_RECOVERY] = SMF_CREATE_STATE(NULL, do_recovery, NULL, &state_table[TMIN1]),
-	[FIRMWARE_UPDATE] = SMF_CREATE_STATE(NULL, do_update, NULL, &state_table[TMIN1]),
-	[TZERO] = SMF_CREATE_STATE(enter_tzero, NULL, exit_tzero, NULL),
-	[UNPROVISIONED] = SMF_CREATE_STATE(NULL, do_unprovisioned, NULL, &state_table[TZERO]),
-	[RUNTIME] = SMF_CREATE_STATE(enter_runtime, do_runtime, exit_runtime, &state_table[TZERO]),
+	[BOOT] = SMF_CREATE_STATE(NULL, NULL, NULL, NULL, NULL),
+	[INIT] = SMF_CREATE_STATE(NULL, do_init, NULL, NULL, NULL),
+	[ROT_RECOVERY] = SMF_CREATE_STATE(NULL, do_rot_recovery, NULL, NULL, NULL),
+	[TMIN1] = SMF_CREATE_STATE(enter_tmin1, NULL, NULL, NULL, NULL),
+	[FIRMWARE_VERIFY] = SMF_CREATE_STATE(NULL, do_verify, NULL, &state_table[TMIN1], NULL),
+	[FIRMWARE_RECOVERY] = SMF_CREATE_STATE(NULL, do_recovery, NULL, &state_table[TMIN1], NULL),
+	[FIRMWARE_UPDATE] = SMF_CREATE_STATE(NULL, do_update, NULL, &state_table[TMIN1], NULL),
+	[TZERO] = SMF_CREATE_STATE(enter_tzero, NULL, exit_tzero, NULL, NULL),
+	[UNPROVISIONED] = SMF_CREATE_STATE(NULL, do_unprovisioned, NULL, &state_table[TZERO], NULL),
+	[RUNTIME] = SMF_CREATE_STATE(enter_runtime, do_runtime, exit_runtime, &state_table[TZERO], NULL),
 #if defined(CONFIG_SEAMLESS_UPDATE)
-	[SEAMLESS_UPDATE] = SMF_CREATE_STATE(NULL, do_seamless_update, NULL, &state_table[TZERO]),
-	[SEAMLESS_VERIFY] = SMF_CREATE_STATE(NULL, do_seamless_verify, NULL, &state_table[TZERO]),
+	[SEAMLESS_UPDATE] = SMF_CREATE_STATE(NULL, do_seamless_update, NULL, &state_table[TZERO], NULL),
+	[SEAMLESS_VERIFY] = SMF_CREATE_STATE(NULL, do_seamless_verify, NULL, &state_table[TZERO], NULL),
 #endif
-	[SYSTEM_LOCKDOWN] = SMF_CREATE_STATE(NULL, do_lockdown, NULL, &state_table[TMIN1]),
-	[SYSTEM_REBOOT] = SMF_CREATE_STATE(NULL, do_reboot, NULL, NULL),
+	[SYSTEM_LOCKDOWN] = SMF_CREATE_STATE(NULL, do_lockdown, NULL, &state_table[TMIN1], NULL),
+	[SYSTEM_REBOOT] = SMF_CREATE_STATE(NULL, do_reboot, NULL, NULL, NULL),
 };
 
 void AspeedStateMachine(void)

@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Aspeed BIC AST1060 board configuration
+#
+# Copyright (c) 2021 ASPEED Technology Inc.
+
+config BOARD_AST2700_DCSCM
+	select SOC_AST1060

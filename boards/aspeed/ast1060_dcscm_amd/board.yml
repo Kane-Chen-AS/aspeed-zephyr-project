@@ -1,0 +1,5 @@
+board:
+  name: ast1060_dcscm_amd
+  vendor: aspeed
+  socs:
+    - name: ast1060
