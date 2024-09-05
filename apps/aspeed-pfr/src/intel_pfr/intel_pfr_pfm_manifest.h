@@ -20,7 +20,7 @@
 #define FVM_CAP        0x4
 #define AFM_ADDR_DEF   0x5
 
-#define CFM_SPI_REGION 0x03
+#define CFM_SPI_REGION 0x04
 
 #define SIZE_OF_PCH_SMBUS_RULE 40
 #define SPI_REGION_DEF_MIN_SIZE 16
