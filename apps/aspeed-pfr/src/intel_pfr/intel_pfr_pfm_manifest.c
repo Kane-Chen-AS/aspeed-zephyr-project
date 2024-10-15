@@ -119,13 +119,9 @@ void detect_PFM_format(uint32_t image_type, uint8_t *buf, int len, uint32_t hash
 		} else if (spi_def->PFMDefinitionType == SPI_REGION) {
 			cap_pfm_body_offset += sizeof(PFM_SPI_DEFINITION);
 			if (spi_def->HashAlgorithmInfo.SHA256HashPresent ||
-			    spi_def->HashAlgorithmInfo.SHA384HashPresent) {
-				cap_pfm_body_offset += sizeof(PFM_SPI_DEFINITION);
+			    spi_def->HashAlgorithmInfo.SHA384HashPresent)
 				cap_pfm_body_offset += (hash_curve == secp384r1) ?
 					SHA384_SIZE : SHA256_SIZE;
-			} else {
-				cap_pfm_body_offset += SPI_REGION_DEF_MIN_SIZE;
-			}
 		} else if (spi_def->PFMDefinitionType == FVM_ADDR_DEF) {
 			cap_pfm_body_offset += sizeof(PFM_FVM_ADDRESS_DEFINITION);
 		} else if (spi_def->PFMDefinitionType == FVM_CAP) {
