@@ -219,7 +219,7 @@ bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, ui
 			end_requester_key_der + 8, 48);
 	LOG_DBG("mbedtls_mpi_read_binary ret=%x", -ret);
 	ret = mbedtls_ecp_point_read_binary(&context->req_key_pair.MBEDTLS_PRIVATE(grp),
-			&context->rsp_key_pair.MBEDTLS_PRIVATE(Q),
+			&context->req_key_pair.MBEDTLS_PRIVATE(Q),
 			end_requester_key_der + end_requester_key_der_len - 97,  97);
 	LOG_DBG("mbedtls_ecp_point_read_binary ret=%x", -ret);
 
