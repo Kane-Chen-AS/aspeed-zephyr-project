@@ -27,6 +27,38 @@ In this example, the size of BIOS active image is 16MB and the BIOS full ROM ima
 |Recovery                    |0x02BF_0000  |0x03FF_0000       |20480   |Static   |
 |PFM                         |0x03FF_0000  |0x0400_0000       |64      |Static   |
 
+# PFM JSON format
+The PFM json file of this example is at: [plta_bios_pfm.json](plta_bios_pfm.json)
+
+## Exclude Pages
+Both `PFM` and `Recovery` start offset and partition size should be added in excluded-pages. Please note that `1 page = 4096` bytes.
+
+- The start offset of `Recovery` should be `0x02BF_0000 / 4096 = 11248`.
+- The end offset of `Recovery` should be `0x03FE_FFFF / 4096 = 16367`.
+- The start offset of `PFM` should be `0x03FF_0000 / 4096 = 16368`.
+- The end offset of `PFM` should be `0x03FF_FFFF / 4096 = 16383`.
+
+```
+"exclude-pages":[[11248, 16367], [16368, 16383]],
+```
+
+## Partition Protection Information
+
+|**Property**| **Description**                                               |
+|------------|---------------------------------------------------------------|
+| name       | Partition label.                                              |
+| index      | Partition index.                                              |
+| offset     | Start offset of the partition.                                |
+| size       | Size of the partition.                                        |
+| prot_mask  | Bit[0]: Read allowed 1.                                       |
+|            | Bit[1]: Write allowed 1.                                      |
+|            | Bit[2]: Recover on first recovery 1.                          |
+|            | Bit[3]: Recover on second recovery 1.                         |
+|            | Bit[4]: Recover on third recovery 1.                          |
+| pfm        | Set to 1 if the partition information should be added in PFM. |
+| hash       | Set to 1 if hashing of the region is needed.                  |
+| compress   | Set to 1 if the partition is compressed in the capsule.       |
+
 # Create BIOS full ROM image
 - Input:
   - BIOS active image whose size is **16MB**
