@@ -16,8 +16,8 @@ In this example, the size of BIOS active image is 16MB and the BIOS full ROM ima
 |Embedded Firmware Signature |0x0002_0000  |0x0002_4000       |16      |Static   |
 |NVRAM                       |0x0002_4000  |0x0004_4000       |128     |Dynamic  |
 |NVRAM Backup                |0x0004_4000  |0x0006_4000       |128     |Dynamic  |
-|PSP Data                    |0x0006_4000  |0x007D_4000       |7616    |Static   |
-|OEM NCB                     |0x007D_4000  |0x007E_4000       |64      |Dyanmic  |
+|PSP Data                    |0x0006_4000  |0x007D_4000       |7616    |Dynamic  |
+|OEM NCB                     |0x007D_4000  |0x007E_4000       |64      |Dynamic  |
 |GPNV                        |0x007E_4000  |0x007F_4000       |64      |Dynamic  |
 |WHEA                        |0x007F_4000  |0x0080_4000       |64      |Dynamic  |
 |FV_MAIN                     |0x0080_4000  |0x00CA_0000       |4720    |Static   |
