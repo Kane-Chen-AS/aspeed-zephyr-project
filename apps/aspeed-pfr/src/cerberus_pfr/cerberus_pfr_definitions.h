@@ -64,6 +64,9 @@
 #define PAGE_SIZE                   0x1000
 #define UFM_PAGE_SIZE               16
 
+// This definition is come from cerberus/tools/recovery_tools/ReadMe.txt
+#define CSK_PUB_KEY_SIZE 520
+
 typedef enum {
 	ROT_REGION = 0,
 	BMC_REGION,

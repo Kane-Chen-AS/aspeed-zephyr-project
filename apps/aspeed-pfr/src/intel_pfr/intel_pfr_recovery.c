@@ -335,13 +335,12 @@ int pfr_recover_active_region(struct pfr_manifest *manifest)
 
 int pfr_staging_pch_staging(struct pfr_manifest *manifest)
 {
-
 	int status;
-
 	uint32_t source_address;
 	uint32_t target_address;
 	uint32_t pc_type;
 	uint32_t image_type = manifest->image_type;
+	uint32_t image_size;
 
 	status = ufm_read(PROVISION_UFM, BMC_STAGING_REGION_OFFSET, (uint8_t *)&source_address,
 			sizeof(source_address));
@@ -357,12 +356,23 @@ int pfr_staging_pch_staging(struct pfr_manifest *manifest)
 	manifest->address = source_address;
 
 	LOG_INF("BMC's PCH Staging Area verification");
-	LOG_INF("Veriifying capsule signature, address=0x%08x", manifest->address);
+	LOG_INF("Verifying capsule signature, address=0x%08x", manifest->address);
 	// manifest verification
 	status = pfr_spi_read(manifest->image_type, manifest->address + (2 * sizeof(pc_type)),
 			sizeof(pc_type), (uint8_t *)&pc_type);
 	if (pc_type != PFR_PCH_UPDATE_CAPSULE && pc_type != PFR_PCH_SEAMLESS_UPDATE_CAPSULE) {
 		LOG_ERR("Invalid pc_type : %x", pc_type);
+		return Failure;
+	}
+	status = pfr_spi_read(manifest->image_type, manifest->address + sizeof(pc_type),
+			sizeof(image_size), (uint8_t *)&image_size);
+	if (status != Success) {
+		LOG_ERR("Failed to read image size");
+		return Failure;
+	}
+	if ((image_size + PFM_SIG_BLOCK_SIZE) > CONFIG_PCH_STAGING_SIZE) {
+		LOG_ERR("Image size %x is bigger than staging size %x",
+				image_size + PFM_SIG_BLOCK_SIZE, CONFIG_PCH_STAGING_SIZE);
 		return Failure;
 	}
 
