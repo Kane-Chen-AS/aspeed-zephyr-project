@@ -186,13 +186,9 @@ int read_afm_dev_info(uint8_t dev_idx, const uint8_t *buffer)
 	/* To verify the data content if the data is stored in external flash */
 	if (dev_idx > afm_dev_idx_bmc) {
 		manifest->image_type = flash_id;
-		manifest->address = afm_list[dev_idx] - offset;
-		manifest->flash->state->device_id[0] = flash_id;
-		ret = manifest->base->verify((struct manifest *)manifest, manifest->hash,
-				manifest->verification->base, manifest->pfr_hash->hash_out,
-				manifest->pfr_hash->length);
-		if (ret) {
-			LOG_ERR("dev%d data (%lx) verification failed, ret = %x", dev_idx, afm_list[dev_idx], ret);
+		ret = validate_region_data(manifest, afm_list[dev_idx] - offset);
+		if (ret == false) {
+			LOG_ERR("dev%d data (%lx) verification failed", dev_idx, afm_list[dev_idx]);
 			return -1;
 		}
 	}

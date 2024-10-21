@@ -69,6 +69,8 @@ int recover_image(void *AoData, void *EventContext)
 		pfr_manifest->image_type = AFM_TYPE;
 		pfr_manifest->address = CONFIG_BMC_AFM_STAGING_OFFSET;
 		pfr_manifest->recovery_address = 0;
+	} else if (EventData->image == AFM_EVENT3) {
+		LOG_INF("Image Type: internal AFM");
 	}
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
 	else if (EventData->image == AFM_EVENT) {
@@ -166,6 +168,16 @@ int recover_image(void *AoData, void *EventContext)
 		return VerifyActive;
 	}
 
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+	if (ActiveObjectData->InternalAFMStatus != Success) {
+		status = pfr_recover_internal_afm(pfr_manifest);
+		if (status != Success)
+			return Failure;
+		ActiveObjectData->InternalAFMStatus = Success;
+	}
+#endif
+#endif
 	return Success;
 }
 

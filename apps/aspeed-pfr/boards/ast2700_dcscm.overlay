@@ -159,7 +159,6 @@
 			reg = <0xE0000 0x10000>;
 		};
 
-		/* For Intel-PFR 3.0 */
 		afm_act_1_partition: partition@f0000 {
 			label = "afm_act_1";
 			reg = <0xF0000 0x10000>;

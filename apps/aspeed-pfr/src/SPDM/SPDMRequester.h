@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include <stdint.h>
+#include <sys/types.h>
 #pragma once
 
 /* Enablie for I3C Attestation */
@@ -23,3 +24,4 @@ void spdm_run_attester(void);
 void spdm_run_attester_i3c(void);
 void spdm_stop_attester(void);
 uint32_t spdm_get_attester(void);
+off_t *spdm_get_afm_list(void);

@@ -23,5 +23,6 @@ enum _hrot_event {
 	AFM_EVENT,
 	CPLD_EVENT,
 	AFM_EVENT2,
+	AFM_EVENT3
 };
 

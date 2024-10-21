@@ -106,8 +106,8 @@
 #define BLOCK_SIZE                      0x10000
 #define UFM_PAGE_SIZE                   16
 
-#define PCH1_AFM_BODY_OFFSET            0x0
-#define PCH2_AFM_BODY_OFFSET            0x2000
+#define CPU0_AFM_BODY_OFFSET            0x0
+#define CPU1_AFM_BODY_OFFSET            0x2000
 #define BMC_AFM_BODY_OFFSET             0x4000
 #define AFM_BODY_SIZE                   0x2000
 
@@ -120,9 +120,10 @@
 typedef enum {
 	BMC_TYPE = 0,
 	PCH_TYPE = 2,
-        ROT_TYPE,
+	ROT_TYPE,
 	AFM_TYPE,
 	AFM_TYPE2,
+	AFM_TYPE3,
 	CPLD_TYPE,
 	MAX_SUPPORTED_FW_TYPE,
 } FW_TYPE;
@@ -130,8 +131,8 @@ typedef enum {
 /*
 	Each AFM device data is 8 Kbytes
 	In ROT_INTERNAL_AFM, its size is 64 Kbytes and it stores 3 AFM device data (CPU0, CPU1, BMC).
-	In EXT_AFM_ACT_1, its size is 512 Kbytes and it stores 63 AFM device data (remaining 8 Kbytes are used for AFM capsule BLK0/BLK1 header overhead)
-	In EXT_AFM_ACT_2, its size is 512 Kbytes and it stores 64 AFM device data
+	In EXT_AFM_ACT_1, its size is 128 Kbytes and it stores 14 AFM device data
+	In EXT_AFM_ACT_2, its size is 128 Kbytes and it stores 16 AFM device data
 */
 typedef enum {
 	afm_dev_idx_cpu0 = 0,

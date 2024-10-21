@@ -51,6 +51,11 @@ struct pfr_manifest {
 	uint32_t intel_cpld_addr[3];                            // CPU/SCM/Debug CPLD firmware addr
 	uint32_t intel_cpld_img_size[3];                        // CPU/SCM/Debug CPLD image size
 #endif
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+	uint32_t bmc_afm_address;                               // AFM address in BMC active PFM
+	uint32_t cpu0_afm_address;                              // AFM address in CPU0 active PFM
+	uint32_t cpu1_afm_address;                              // AFM address in CPU1 active PFM
+#endif
 	uint8_t update_intent1;
 	uint8_t update_intent2;
 };

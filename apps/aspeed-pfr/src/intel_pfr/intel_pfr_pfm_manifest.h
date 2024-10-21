@@ -17,6 +17,7 @@
 #define SPI_REGION     0x1
 #define SMBUS_RULE     0x2
 #define FVM_ADDR_DEF   0x3
+#define AFM_ADDR_DEF_v3 0x3
 #define FVM_CAP        0x4
 #define AFM_ADDR_DEF   0x5
 
@@ -279,4 +280,9 @@ int get_recover_pfm_version_details(struct pfr_manifest *manifest, uint32_t addr
 int get_active_pfm_version_details(struct pfr_manifest *manifest, uint32_t address);
 int pfm_spi_region_verification(struct pfr_manifest *manifest);
 int update_afm_body(uint32_t type, uint32_t read_address);
-
+bool validate_region_data(struct pfr_manifest *manifest, uint32_t address);
+int erase_afm_body(uint32_t afm_body_offset);
+void set_afm_address(struct pfr_manifest *manifest, uint32_t afm_addr);
+int verify_pfm_afm(struct pfr_manifest *manifest, uint32_t afm_addr, uint32_t afm_body_offset);
+int verify_afm_devices(struct pfr_manifest *manifest);
+int verify_internal_afm(struct pfr_manifest *pfr_manifest, uint32_t flash_type);

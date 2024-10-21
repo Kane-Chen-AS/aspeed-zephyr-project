@@ -477,6 +477,13 @@ void verify_image(uint32_t image, uint32_t operation, uint32_t flash, struct smf
 			state->afm_active_object.RecoveryImageStatus = ret ? Failure : Success;
 		}
 	}
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+	else if (image == AFM_EVENT3) {
+		LOG_INF("authentication_image internal afm return %d", ret);
+		state->afm_active_object.InternalAFMStatus = ret ? Failure : Success;
+
+	}
+#endif
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 	else if (image == CPLD_EVENT) {
@@ -658,6 +665,9 @@ void handle_image_verification(void *o)
 					last_pch_recovery_verify_status;
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 				verify_image(AFM_EVENT, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+				verify_image(AFM_EVENT3, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#endif
 #endif
 			} else if (evt_ctx->data.bit8[2] & PchOnlyReset) {
 				verify_image(PCH_EVENT, VERIFY_BACKUP, SECONDARY_FLASH_REGION, state);
@@ -668,6 +678,9 @@ void handle_image_verification(void *o)
 					last_bmc_recovery_verify_status;
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 				verify_image(AFM_EVENT, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+				verify_image(AFM_EVENT3, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#endif
 #endif
 			} else {
 				/* BMC Verification */
@@ -684,6 +697,9 @@ void handle_image_verification(void *o)
 				// SetPlatformState(AFM_FLASH_AUTH); // Not defined in documented
 				verify_image(AFM_EVENT, VERIFY_BACKUP, SECONDARY_FLASH_REGION, state);
 				verify_image(AFM_EVENT, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+				verify_image(AFM_EVENT3, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#endif
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 				// Only verify CPLD images in platform reset
@@ -774,6 +790,9 @@ void handle_image_verification(void *o)
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 						|| state->afm_active_object.ActiveImageStatus == Failure
 						|| state->afm_active_object.RecoveryImageStatus == Failure
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+						|| state->afm_active_object.InternalAFMStatus == Failure
+#endif
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 						|| state->cpld_active_object.ActiveImageStatus == Failure
@@ -871,6 +890,16 @@ void handle_recovery(void *o)
 		__attribute__ ((fallthrough));
 #endif
 	case VERIFY_FAILED:
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+		if (state->afm_active_object.InternalAFMStatus == Failure) {
+			evt_wrap.image = AFM_EVENT3;
+			ret = recover_image(&state->afm_active_object, &evt_wrap);
+			LOG_INF("Internal AFM Recovery return=%d", ret);
+			recovery_done = 1;
+		}
+#endif
+#endif
 		// Recovery matrix can be handled in recover_image
 		if (state->bmc_active_object.RecoveryImageStatus == Failure) {
 			LogRecovery(BMC_RECOVERY_FAIL);

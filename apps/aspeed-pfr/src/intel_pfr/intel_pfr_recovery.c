@@ -415,6 +415,45 @@ int pfr_staging_pch_staging(struct pfr_manifest *manifest)
 	return Success;
 }
 
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+#include "intel_pfr_pfm_manifest.h"
+int recover_internal_afm(uint32_t image_type, uint32_t pfm_afm_addr, uint32_t internal_afm_addr)
+{
+	if (pfm_afm_addr) {
+		if (pfr_spi_erase_region(ROT_INTERNAL_AFM, true, internal_afm_addr, AFM_BODY_SIZE)) {
+			LOG_ERR("Failed to erase AFM body Partition (%x)", internal_afm_addr);
+			return Failure;
+		}
+		if (pfr_spi_region_read_write_between_spi(image_type, pfm_afm_addr,
+					ROT_INTERNAL_AFM, internal_afm_addr, AFM_BODY_SIZE)) {
+			LOG_ERR("Failed to write AFM body Partition (%x)", internal_afm_addr);
+			return Failure;
+		}
+
+	} else {
+		if (erase_afm_body(internal_afm_addr))
+			return Failure;
+	}
+
+	return Success;
+}
+
+int pfr_recover_internal_afm(struct pfr_manifest *manifest)
+{
+	LOG_INF("Recovery internal AFM");
+
+	if (recover_internal_afm(BMC_SPI, manifest->bmc_afm_address, BMC_AFM_BODY_OFFSET))
+		return Failure;
+	if (recover_internal_afm(PCH_SPI, manifest->cpu0_afm_address, CPU0_AFM_BODY_OFFSET))
+		return Failure;
+
+	LOG_INF("Recovery success");
+	return Success;
+}
+#endif
+#endif
+
 int intel_pfr_recover_update_action(struct pfr_manifest *manifest)
 {
 	ARG_UNUSED(manifest);

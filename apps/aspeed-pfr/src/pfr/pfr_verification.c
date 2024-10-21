@@ -55,14 +55,16 @@ int authentication_image(void *AoData, void *EventContext)
 			pfr_manifest->image_type = ROT_EXT_AFM_RC_1;
 		else
 			pfr_manifest->image_type = ROT_EXT_AFM_ACT_1;
-	}
-	else if (EventData->image == AFM_EVENT2) {
+	} else if (EventData->image == AFM_EVENT2) {
 		// AFM Image
 		LOG_INF("Image Type: AFM2");
 		if (EventData->operation == VERIFY_BACKUP)
 			pfr_manifest->image_type = ROT_EXT_AFM_RC_2;
 		else
 			pfr_manifest->image_type = ROT_EXT_AFM_ACT_2;
+	} else if (EventData->image == AFM_EVENT3) {
+		LOG_INF("Image Type: Internal AFM");
+		pfr_manifest->image_type = ROT_INTERNAL_AFM;
 	}
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
 	else if (EventData->image == AFM_EVENT) {
