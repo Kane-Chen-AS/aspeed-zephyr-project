@@ -809,8 +809,10 @@ int update_firmware_image(uint32_t image_type, void *AoData, void *EventContext,
 		// for handling the pending recovery update.
 		if (cpld_update_status->Region[PCH_REGION].Recoveryregion != RECOVERY_PENDING_REQUEST_HANDLED) {
 			status = pfr_staging_pch_staging(pfr_manifest);
-			if (status != Success)
+			if (status != Success) {
+				LogUpdateFailure(UPD_CAPSULE_AUTH_FAIL, 1);
 				return Failure;
+			}
 		}
 	}
 
