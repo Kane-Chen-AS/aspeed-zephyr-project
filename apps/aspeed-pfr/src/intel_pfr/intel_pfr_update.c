@@ -73,7 +73,11 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 	else if (manifest->image_type == AFM_TYPE) {
 		LOG_INF("AFM Staging Region Verification");
 		manifest->image_type = BMC_TYPE;
-		read_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		status = ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+				(uint8_t *)&read_address, sizeof(read_address));
+		if (status != Success)
+			return Failure;
+
 		target_address = 0;
 		afm_update = true;
 	}
@@ -81,7 +85,11 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 	else if (manifest->image_type == AFM_TYPE) {
 		LOG_INF("AFM Staging Region Verification");
 		manifest->image_type = BMC_TYPE;
-		read_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		status = ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+				(uint8_t *)&read_address, sizeof(read_address));
+		if (status != Success)
+			return Failure;
+
 		target_address = CONFIG_BMC_AFM_RECOVERY_OFFSET;
 		afm_update = true;
 	}
@@ -311,6 +319,12 @@ int update_afm_v30(enum AFM_PARTITION_TYPE part, uint32_t address, size_t length
 			return Failure;
 		}
 	} else if (part == AFM_PART_RCV_1) {
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+			(uint8_t *)&source_address, sizeof(source_address)) != Success) {
+			LOG_ERR("Failed to get AFM Staging Offset");
+			return Failure;
+		}
+
 		if (pfr_spi_erase_region(BMC_SPI, true,
 					CONFIG_BMC_AFM_RECOVERY_OFFSET,
 					CONFIG_BMC_AFM_STAGING_RECOVERY_SIZE)) {
@@ -319,7 +333,7 @@ int update_afm_v30(enum AFM_PARTITION_TYPE part, uint32_t address, size_t length
 		}
 
 		if (pfr_spi_region_read_write_between_spi(
-					BMC_SPI, CONFIG_BMC_AFM_STAGING_OFFSET,
+					BMC_SPI, source_address,
 					BMC_SPI, CONFIG_BMC_AFM_RECOVERY_OFFSET,
 					CONFIG_BMC_AFM_STAGING_RECOVERY_SIZE)) {
 			LOG_ERR("Failed to write AFM Recovery Partition");
@@ -360,7 +374,11 @@ int update_afm_v40(enum AFM_PARTITION_TYPE part, uint32_t address, size_t length
 	} else if (part == AFM_PART_RCV_1) {
 		flash_type = ROT_EXT_AFM_RC_1;
 		source_flash_type = BMC_SPI;
-		source_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+			(uint8_t *)&source_address, sizeof(source_address)) != Success) {
+			LOG_ERR("Failed to get AFM Staging Offset");
+			return Failure;
+		}
 	} else {
 		return Failure;
 	}
@@ -724,7 +742,11 @@ int update_firmware_image(uint32_t image_type, void *AoData, void *EventContext,
 		LOG_INF("AFM Update in progress");
 		update_type = AFM_TYPE;
 		pfr_manifest->image_type = BMC_TYPE;
-		source_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+			(uint8_t *)&source_address, sizeof(source_address)) != Success) {
+			LOG_ERR("Failed to get AFM Staging Offset");
+			return Failure;
+		}
 	}
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)

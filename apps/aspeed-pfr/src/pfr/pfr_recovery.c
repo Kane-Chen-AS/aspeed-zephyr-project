@@ -67,7 +67,12 @@ int recover_image(void *AoData, void *EventContext)
 	else if (EventData->image == AFM_EVENT) {
 		LOG_INF("Image Type: AFM");
 		pfr_manifest->image_type = AFM_TYPE;
-		pfr_manifest->address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (get_provision_data_in_flash(AFM_STAGING_REGION_OFFSET,
+			(uint8_t *)&act_pfm_addr, sizeof(act_pfm_addr)) != Success) {
+			LOG_ERR("Failed to get AFM Staging Offset");
+			return Failure;
+		}
+		pfr_manifest->address = act_pfm_addr;
 		pfr_manifest->recovery_address = 0;
 	} else if (EventData->image == AFM_EVENT3) {
 		LOG_INF("Image Type: internal AFM");
@@ -76,7 +81,12 @@ int recover_image(void *AoData, void *EventContext)
 	else if (EventData->image == AFM_EVENT) {
 		LOG_INF("Image Type: AFM");
 		pfr_manifest->image_type = AFM_TYPE;
-		pfr_manifest->address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (get_provision_data_in_flash(AFM_STAGING_REGION_OFFSET,
+			(uint8_t *)&act_pfm_addr, sizeof(act_pfm_addr)) != Success) {
+			LOG_ERR("Failed to get AFM Staging Offset");
+			return Failure;
+		}
+		pfr_manifest->address = act_pfm_addr;
 		pfr_manifest->recovery_address = CONFIG_BMC_AFM_RECOVERY_OFFSET;
 	}
 #endif

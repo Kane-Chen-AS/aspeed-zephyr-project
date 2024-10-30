@@ -255,8 +255,10 @@ void ClearBmcCheckpoint(void);
 void initializeFPLEDs(void);
 void SetUfmFlashStatus(uint32_t UfmStatus, uint32_t UfmStatusBitMask);
 void log_t0_timed_boot_complete_if_ready(const PLATFORM_STATE_VALUE current_boot_state);
-
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+int ProvisionAFMOffset(uint8_t *DataBuffer, uint32_t length);
 bool IsSpdmAttestationEnabled();
+#endif
 
 #define UFM_STATUS_LOCK_BIT_MASK                      0b1
 #define UFM_STATUS_PROVISIONED_ROOT_KEY_HASH_BIT_MASK 0b10
@@ -267,6 +269,7 @@ bool IsSpdmAttestationEnabled();
 #define UFM_STATUS_PIT_L2_ENABLE_BIT_MASK             0b1000000
 #define UFM_STATUS_PIT_HASH_STORED_BIT_MASK           0b10000000
 #define UFM_STATUS_PIT_L2_PASSED_BIT_MASK             0b100000000
+#define UFM_STATUS_PROVISIONED_AFM_OFFSETS_BIT_MASK   0b1000000000
 
 // If root key hash, pch and bmc offsets are provisioned, we say CPLD has been provisioned
 #define UFM_STATUS_PROVISIONED_BIT_MASK               0b000001110
@@ -276,6 +279,7 @@ int swmbx_mctp_i3c_doe_msg_read_handler(uint8_t addr, uint8_t data_len, uint8_t 
 
 #define BMC_OFFSET_SIZE 12
 #define PCH_OFFSET_SIZE 12
+#define AFM_OFFSET_SIZE 4
 
 typedef enum {
 	SECURE_CONNECTION_DISABLE,

@@ -89,7 +89,10 @@ int does_staged_fw_image_match_active_fw_image(struct pfr_manifest *manifest)
 #if (CONFIG_AFM_SPEC_VERSION == 4)
 	else if (manifest->image_type == AFM_TYPE) {
 		manifest->image_type = BMC_TYPE;
-		staging_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET, (uint8_t *)&staging_address,
+					sizeof(staging_address)))
+			return Failure;
+
 		/* Fixed partition so starts from zero */
 		act_pfm_image_type = ROT_EXT_AFM_ACT_1;
 		act_pfm_offset = 0;
@@ -97,7 +100,10 @@ int does_staged_fw_image_match_active_fw_image(struct pfr_manifest *manifest)
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
 	else if (manifest->image_type == AFM_TYPE) {
 		manifest->image_type = BMC_TYPE;
-		staging_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET, (uint8_t *)&staging_address,
+					sizeof(staging_address)))
+			return Failure;
+
 		/* Fixed partition so starts from zero */
 		act_pfm_image_type = ROT_INTERNAL_AFM;
 		act_pfm_offset = 0;

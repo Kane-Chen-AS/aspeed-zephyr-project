@@ -49,10 +49,6 @@ config BMC_AFM_RECOVERY_OFFSET
 	default 0x0c300000
 	hex "AFM recovery region offset in BMC flash"
 
-config BMC_AFM_STAGING_OFFSET
-	default 0x0c2e0000
-	hex "AFM staging region offset in BMC flash"
-
 config BMC_AFM_STAGING_RECOVERY_SIZE
 	default 0x20000
 	hex "AFM staging/recovery region size in BMC flash"

@@ -47,6 +47,7 @@ uint8_t gReadFifoData[64];
 uint8_t gRootKeyHash[SHA384_DIGEST_LENGTH];
 uint8_t gPchOffsets[PCH_OFFSET_SIZE];
 uint8_t gBmcOffsets[BMC_OFFSET_SIZE];
+uint8_t gAFMOffset[AFM_OFFSET_SIZE];
 #if defined(CONFIG_PIT_PROTECTION)
 uint8_t gPitPassword[8];
 #endif
@@ -1090,6 +1091,38 @@ void EnablePitLevel2(void)
 #endif
 
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
+int ProvisionAFMOffset(uint8_t *DataBuffer, uint32_t length)
+{
+	uint32_t UfmStatus;
+	int Status;
+
+	if (!DataBuffer)
+		return Failure;
+
+	Status = get_provision_data_in_flash(UFM_STATUS, (uint8_t *)&UfmStatus, sizeof(UfmStatus));
+	if (Status != Success) {
+		LOG_ERR("Failed to get UFM status");
+		return Failure;
+	}
+
+	if (!CheckUfmStatus(UfmStatus, UFM_STATUS_LOCK_BIT_MASK) &&
+		!CheckUfmStatus(UfmStatus, UFM_STATUS_PROVISIONED_AFM_OFFSETS_BIT_MASK)) {
+		Status = set_provision_data_in_flash(AFM_STAGING_REGION_OFFSET, DataBuffer, length);
+		if (Status == Success) {
+			SetUfmFlashStatus(UfmStatus, UFM_STATUS_PROVISIONED_AFM_OFFSETS_BIT_MASK);
+			LOG_INF("AFM offset provisioned");
+			return Success;
+		}
+
+		LOG_ERR("AFM Staging offset provision failed...");
+		erase_provision_ufm_flash();
+		return Failure;
+	}
+
+	LOG_WRN("%s, Provisioned or UFM Locked", __func__);
+	return UnSupported;
+}
+
 bool IsSpdmAttestationEnabled()
 {
 	// This setting will active/deactive SPDM attestation on next boot.
@@ -1157,6 +1190,16 @@ void ReadBmcOffets(void)
 		swmbx_write(gSwMbxDev, true, UfmReadFIFO, gBmcOffsets + i);
 }
 
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+void ReadAFMOffset(void)
+{
+	get_provision_data_in_flash(AFM_STAGING_REGION_OFFSET, gAFMOffset, sizeof(gAFMOffset));
+	memcpy(gReadFifoData, gAFMOffset, sizeof(gAFMOffset));
+	for (size_t i = 0; i < sizeof(gAFMOffset); ++i)
+		swmbx_write(gSwMbxDev, true, UfmReadFIFO, gAFMOffset + i);
+}
+#endif
+
 /**
  * Function to process th UFM command operations
  * @Param  NULL
@@ -1181,7 +1224,11 @@ void process_provision_command(void)
 	get_provision_data_in_flash(UFM_STATUS, (uint8_t *)&UfmFlashStatus, sizeof(UfmFlashStatus));
 
 	if (CheckUfmStatus(UfmFlashStatus, UFM_STATUS_LOCK_BIT_MASK)) {
-		if ((UfmCommandData < READ_ROOT_KEY) || (UfmCommandData > READ_BMC_OFFSET)) {
+		if ((UfmCommandData < READ_ROOT_KEY) ||
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+			(UfmCommandData == PROVISION_AFM_OFFSET) ||
+#endif
+			(UfmCommandData > READ_BMC_OFFSET)) {
 			// Ufm locked
 			LOG_WRN("UFM Locked and Dropped Write Command: 0x%x", UfmCommandData);
 			SetUfmStatusValue(COMMAND_ERROR);
@@ -1250,6 +1297,18 @@ void process_provision_command(void)
 		break;
 #endif
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
+	case PROVISION_AFM_OFFSET:
+		memcpy(gAFMOffset, gUfmFifoData, sizeof(gAFMOffset));
+		Status = ProvisionAFMOffset(gAFMOffset, sizeof(gAFMOffset));
+		if (Status != Success) {
+			SetUfmStatusValue(COMMAND_ERROR);
+			return;
+		}
+		gProvisionData = 1;
+		break;
+	case READ_AFM_OFFSET:
+		ReadAFMOffset();
+		break;
 	case ENABLE_DEVICE_ATTESTATION_REQUESTS:
 		LOG_INF("Enable SPDM Attestation");
 		EnableSpdmAttestation(true);
@@ -1272,6 +1331,9 @@ void process_provision_command(void)
 		get_provision_data_in_flash(UFM_STATUS, (uint8_t *)&UfmFlashStatus, sizeof(UfmFlashStatus));
 		if (CheckUfmStatus(UfmFlashStatus, UFM_STATUS_PROVISIONED_ROOT_KEY_HASH_BIT_MASK |
 			   UFM_STATUS_PROVISIONED_PCH_OFFSETS_BIT_MASK |
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+			   UFM_STATUS_PROVISIONED_AFM_OFFSETS_BIT_MASK |
+#endif
 			   UFM_STATUS_PROVISIONED_BMC_OFFSETS_BIT_MASK)) {
 			CPLD_STATUS cpld_status;
 
@@ -1509,7 +1571,12 @@ void show_provision_info(void)
 		LOG_INF("PCH Active PFM Offset : %08x", *(uint32_t *)&tmpbuf[0]);
 		LOG_INF("PCH Recovery Region Offset : %08x", *(uint32_t *)&tmpbuf[4]);
 		LOG_INF("PCH Staging Region Offset : %08x", *(uint32_t *)&tmpbuf[8]);
-		memset(tmpbuf, 0xff, BMC_OFFSET_SIZE);
+		memset(tmpbuf, 0xff, PCH_OFFSET_SIZE);
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+		get_provision_data_in_flash(AFM_STAGING_REGION_OFFSET, tmpbuf, AFM_OFFSET_SIZE);
+		LOG_INF("AFM Staging Region Offset : %08x", *(uint32_t *)&tmpbuf[0]);
+		memset(tmpbuf, 0xff, AFM_OFFSET_SIZE);
+#endif
 		get_provision_data_in_flash(ROOT_KEY_HASH, tmpbuf, SHA384_DIGEST_LENGTH);
 		LOG_HEXDUMP_INF(tmpbuf, SHA384_DIGEST_LENGTH, "Root Key Hash:");
 	}

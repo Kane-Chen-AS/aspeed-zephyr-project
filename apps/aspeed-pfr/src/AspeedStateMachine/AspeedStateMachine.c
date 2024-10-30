@@ -152,14 +152,18 @@ int get_staging_hash(uint8_t image_type, CPLD_STATUS *cpld_status, uint8_t *hash
 		staging_size = CONFIG_BMC_PFR_STAGING_SIZE;
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 	} else if (image_type == AFM_TYPE) {
-		address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		ufm_staging_offset = AFM_STAGING_REGION_OFFSET;
 		staging_size = CONFIG_BMC_AFM_STAGING_RECOVERY_SIZE;
 #endif
 	} else {
 		return -1;
 	}
 
-	if (image_type == BMC_TYPE || image_type == PCH_TYPE) {
+	if (image_type == BMC_TYPE ||
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+		image_type == AFM_TYPE ||
+#endif
+		image_type == PCH_TYPE) {
 		if (ufm_read(PROVISION_UFM, ufm_staging_offset, (uint8_t *)&address,
 					sizeof(address)))
 			return -1;
@@ -1440,7 +1444,10 @@ int validate_afm_update_type(CPLD_STATUS *cpld_update_status, uint32_t *image_ty
 		return Success;
 	}
 
-	payload_address = CONFIG_BMC_AFM_STAGING_OFFSET + PFM_SIG_BLOCK_SIZE;
+	ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+		(uint8_t *)&payload_address, sizeof(payload_address));
+
+	payload_address += PFM_SIG_BLOCK_SIZE;
 	LOG_INF("AFM update start payload_address=%08x", payload_address );
 	status = pfr_spi_read(BMC_TYPE, payload_address + PFM_SIG_BLOCK_SIZE + 4,
 				sizeof(uint8_t), (uint8_t *)&hrot_svn);
