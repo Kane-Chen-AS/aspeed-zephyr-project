@@ -151,7 +151,7 @@ int set_provision_data_in_flash(uint32_t addr, uint8_t *DataBuffer, uint32_t len
 
 #define SWMBX_NOTIFYEE_STACK_SIZE 1024
 
-#define TOTAL_MBOX_EVENT 12
+#define TOTAL_MBOX_EVENT 13
 
 struct k_thread swmbx_notifyee_thread;
 K_THREAD_STACK_DEFINE(swmbx_notifyee_stack, SWMBX_NOTIFYEE_STACK_SIZE);
@@ -168,6 +168,7 @@ K_SEM_DEFINE(bmc_update_intent2_sem, 0, 1);
 K_SEM_DEFINE(pch_update_intent2_sem, 0, 1);
 K_SEM_DEFINE(bmc_ufm_smbus_ownership_sem, 0, 1);
 K_SEM_DEFINE(pch_ufm_smbus_ownership_sem, 0, 1);
+K_SEM_DEFINE(bmc_i3c_reset_comm_sem, 0, 1);
 
 struct k_mutex write_fifo_mutex;
 #if defined(CONFIG_PFR_MCTP)
@@ -301,6 +302,15 @@ int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t
 			swmbx_write(gSwMbxDev, false, UfmSmbusOwnership, &data.bit8[1]);
 		}
 		break;
+	case BmcResetCommunication:
+		if (isBMC == true) {
+			if (data.bit8[1] == 1)
+				GenerateStateMachineEvent(BMC_RESET_COMM_REQUESTED, data.ptr);
+			data.bit8[1] = 0;
+			if (swmbx_write(gSwMbxDev, false, addr, &data.bit8[1]))
+				goto error;
+		}
+		break;
 	default:
 		LOG_ERR("Unsupported mailbox command");
 		goto error;
@@ -330,6 +340,7 @@ void swmbx_notifyee_main(void *a, void *b, void *c)
 	k_poll_event_init(&events[9], K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, &pch_update_intent2_sem);
 	k_poll_event_init(&events[10], K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, &bmc_ufm_smbus_ownership_sem);
 	k_poll_event_init(&events[11], K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, &pch_ufm_smbus_ownership_sem);
+	k_poll_event_init(&events[12], K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, &bmc_i3c_reset_comm_sem);
 
 	int ret, status;
 
@@ -459,6 +470,14 @@ void swmbx_notifyee_main(void *a, void *b, void *c)
 			// PCH/CPU has R/W access to only Bit[1:0]
 			data.bit8[1] &= 0x3;
 			swmbx_write(gSwMbxDev, false, UfmSmbusOwnership, &data.bit8[1]);
+		} else if (events[12].state == K_POLL_STATE_SEM_AVAILABLE) {
+			k_sem_take(events[12].sem, K_NO_WAIT);
+			data.bit8[0] = BmcResetCommunication;
+			swmbx_get_msg(0, BmcResetCommunication, &data.bit8[1]);
+			if (data.bit8[1] == 1)
+				GenerateStateMachineEvent(BMC_RESET_COMM_REQUESTED, data.ptr);
+			data.bit8[1] = 0;
+			swmbx_write(gSwMbxDev, false, BmcResetCommunication, &data.bit8[1]);
 		}
 
 		for (size_t i = 0; i < TOTAL_MBOX_EVENT; ++i)
@@ -1421,6 +1440,7 @@ void set_swmbx_state(bool value)
 		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcCheckpoint, false);
 		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcUpdateIntent2, false);
 		swmbx_update_notify(gSwMbxDev, 0x0, NULL, UfmSmbusOwnership, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcResetCommunication, false);
 
 		swmbx_update_notify(gSwMbxDev, 0x1, NULL, UfmWriteFIFO, false);
 		swmbx_update_notify(gSwMbxDev, 0x1, NULL, UfmCmdTriggerValue, false);
@@ -1474,6 +1494,8 @@ void set_swmbx_state(bool value)
 				BmcUpdateIntent2, true);
 		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_ufm_smbus_ownership_sem,
 				UfmSmbusOwnership, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_i3c_reset_comm_sem, BmcResetCommunication,
+				true);
 
 		swmbx_update_notify(gSwMbxDev, 0x1, &ufm_write_fifo_data_sem, UfmWriteFIFO, true);
 		swmbx_update_notify(gSwMbxDev, 0x1, &ufm_provision_trigger_sem,

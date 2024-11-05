@@ -76,7 +76,8 @@ typedef enum _SMBUS_MAILBOX_RF_ADDRESS_READONLY {
 	PfrActivityInfo1        = 0x7e,
 	PfrActivityInfo2        = 0x7f,
 	AcmBiosScratchPad       = 0x80,
-	BmcScratchPad           = 0xc0,
+	BmcResetCommunication   = 0xc0,
+	BmcScratchPad           = 0xc1,
 } SMBUS_MAILBOX_RF_ADDRESS;
 
 typedef enum _EXECUTION_CHECKPOINT {

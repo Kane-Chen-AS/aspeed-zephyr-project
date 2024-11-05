@@ -59,6 +59,7 @@ enum aspeed_pfr_event {
 	ATTESTATION_FAILED,
 #endif
 	HANDSHAKE_FAILED,
+	BMC_RESET_COMM_REQUESTED,
 };
 
 enum OPERATIONS {

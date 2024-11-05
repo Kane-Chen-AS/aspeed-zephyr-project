@@ -373,10 +373,10 @@ void enter_tmin1(void *o)
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 		mctp_i3c_target_mctp_stop();
 #else
- 		if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
- 					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
+		if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
+					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
 			LOG_WRN("Failed to detach BMC's i3c target device");
- 		else
+		else
 			LOG_INF("BMC's I3C target device detached");
 #endif
 #endif
@@ -415,10 +415,10 @@ void enter_tmin1(void *o)
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 		mctp_i3c_target_mctp_stop();
 #else
- 		if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
- 					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
+		if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
+					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
 			LOG_WRN("Failed to detach BMC's i3c target device");
- 		else
+		else
 			LOG_INF("BMC's I3C target device detached");
 
 		if (get_i3c_mng_owner() == I3C_MNG_OWNER_ROT) {
@@ -1297,8 +1297,8 @@ void handle_checkpoint(void *o)
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 			mctp_i3c_target_intf_init();
 #else
- 			mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
- 					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
+			mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
+					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
 			mctp_i3c_configure_cpu_i3c_devs();
 #endif
 #endif
@@ -1842,11 +1842,11 @@ void do_unprovisioned(void *o)
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 			mctp_i3c_target_intf_init();
 #else
- 			mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
- 					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
+			mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
+					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
 			mctp_i3c_configure_cpu_i3c_devs();
 #endif
- 		}
+		}
 #endif
 		break;
 	default:
@@ -2273,6 +2273,22 @@ void AspeedStateMachine(void)
 				}
 				break;
 #endif
+#if defined(CONFIG_PFR_MCTP_I3C)
+			case BMC_RESET_COMM_REQUESTED:
+#if defined(CONFIG_PFR_MCTP_I3C_5_0)
+				mctp_i3c_target_mctp_stop();
+				mctp_i3c_target_intf_init();
+#else
+				if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
+							CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
+					LOG_WRN("Failed to detach BMC's i3c target device");
+				else
+					LOG_INF("BMC's I3C target device detached");
+				mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
+						CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
+#endif
+				break;
+#endif
 			default:
 				break;
 			}
@@ -2300,6 +2316,22 @@ void AspeedStateMachine(void)
 #endif
 				next_state = &state_table[FIRMWARE_VERIFY];
 				break;
+#if defined(CONFIG_PFR_MCTP_I3C)
+			case BMC_RESET_COMM_REQUESTED:
+#if defined(CONFIG_PFR_MCTP_I3C_5_0)
+				mctp_i3c_target_mctp_stop();
+				mctp_i3c_target_intf_init();
+#else
+				if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
+							CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
+					LOG_WRN("Failed to detach BMC's i3c target device");
+				else
+					LOG_INF("BMC's I3C target device detached");
+				mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
+						CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
+#endif
+				break;
+#endif
 			default:
 				break;
 			}
