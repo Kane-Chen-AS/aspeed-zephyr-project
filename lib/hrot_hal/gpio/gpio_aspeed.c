@@ -23,6 +23,9 @@
 
 #if DT_NODE_HAS_STATUS(DT_INST(0, aspeed_pfr_gpio_bhs), okay)
 #define INTEL_BHS
+#if defined(CONFIG_BOARD_AST1060_PROT)
+#define INTEL_PROT
+#endif
 #endif
 
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
@@ -72,6 +75,7 @@ static void bmc_extrst_enable_ctrl(bool enable)
 
 static void pch_rst_enable_ctrl(bool enable)
 {
+#if defined(INTEL_PROT) || !defined(INTEL_BHS)
 	int ret;
 	const struct gpio_dt_spec rst_gpio =
 		GPIO_DT_SPEC_GET_BY_IDX(DT_INST(0, aspeed_pfr_gpio_common),
@@ -79,10 +83,8 @@ static void pch_rst_enable_ctrl(bool enable)
 
 	if (enable) {
 		gpio_pin_set(rst_gpio.port, rst_gpio.pin, 0);
-		LOG_INF("[PFR->CPLD] AUX_PWRGD De-assert[%s %d]", rst_gpio.port->name, rst_gpio.pin);
 	} else {
 		gpio_pin_set(rst_gpio.port, rst_gpio.pin, 1);
-		LOG_INF("[PFR->CPLD] AUX_PWRGD Assert[%s %d]", rst_gpio.port->name, rst_gpio.pin);
 	}
 
 	ret = gpio_pin_configure_dt(&rst_gpio, GPIO_OUTPUT);
@@ -90,6 +92,7 @@ static void pch_rst_enable_ctrl(bool enable)
 		return;
 
 	k_busy_wait(10000); /* 10ms */
+#endif
 }
 
 int BMCBootHold(void)
@@ -140,9 +143,7 @@ int PCHBootHold(void)
 	// RTCRSTControl(true);
 	AUXPowerGoodControl(false);
 	/* Hold PCH Reset */
-#ifndef INTEL_BHS
 	pch_rst_enable_ctrl(true);
-#endif
 
 	dev_m = device_get_binding(PCH_SPI_MONITOR);
 	/* config spi monitor as master mode */
@@ -239,7 +240,7 @@ int PCHBootRelease(void)
 	// RTCRSTControl(false);
 	AUXPowerGoodControl(true);
 
-	// pch_rst_enable_ctrl(false);
+	pch_rst_enable_ctrl(false);
 	LOG_INF("release PCH");
 	return 0;
 }
