@@ -31,11 +31,7 @@ typedef enum _SMBUS_MAILBOX_RF_ADDRESS_READONLY {
 	UfmCmdTriggerValue = 0x0c,
 	UfmWriteFIFO = 0x0d,
 	UfmReadFIFO = 0x0e,
-#if defined(CONFIG_PFR_MCTP)
 	MCTPWriteFIFO = 0x0f,
-#else
-	BmcCheckpoint = 0x0f,
-#endif
 	AcmCheckpoint = 0x10,
 	BiosCheckpoint = 0x11,
 	PchUpdateIntent = 0x12,
@@ -53,9 +49,7 @@ typedef enum _SMBUS_MAILBOX_RF_ADDRESS_READONLY {
 	BmcPfmRecoverMajorVersion = 0x1e,
 	BmcPfmRecoverMinorVersion = 0x1f,
 	CpldFPGARoTHash = 0x20, /* 0x20 - 0x5f */
-#if defined(CONFIG_PFR_MCTP)
 	BmcCheckpoint = 0x60,
-#endif
 	PchUpdateIntent2        = 0x61,
 	BmcUpdateIntent2        = 0x62,
 	UfmSmbusOwnership       = 0x63,
