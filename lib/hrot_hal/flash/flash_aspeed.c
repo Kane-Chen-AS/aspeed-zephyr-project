@@ -219,7 +219,7 @@ int get_rot_region(uint8_t device_id, const struct flash_area **fa)
 	case ROT_INTERNAL_KEY:
 		ret = flash_area_open(FIXED_PARTITION_ID(key_partition), fa);
 		break;
-#if defined(CONFIG_BOOTLOADER_MCUBOOT)
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
 	case ROT_INTERNAL_CERTIFICATE:
 		ret = flash_area_open(FIXED_PARTITION_ID(certificate_partition), fa);
 		break;

@@ -1189,8 +1189,8 @@ void exit_tzero(void *o)
 }
 
 extern struct device *gSwMbxDev;
-extern uint8_t gUfmFifoData[64];
-extern uint8_t gReadFifoData[64];
+extern uint8_t gUfmFifoData[SWMBX_WRITE_FIFO_SIZE];
+extern uint8_t gReadFifoData[SWMBX_READ_FIFO_SIZE];
 extern uint8_t gFifoData;
 
 void handle_provision_event(void *o)

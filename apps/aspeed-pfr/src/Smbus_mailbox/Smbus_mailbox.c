@@ -33,6 +33,7 @@
 #include "watchdog_timer/wdt_utils.h"
 #include "watchdog_timer/wdt_handler.h"
 #include "cmd_interface/cmd_channel.h"
+#include "SPDM/Certificates/certificate_utils.h"
 
 LOG_MODULE_REGISTER(mailbox, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -42,8 +43,8 @@ LOG_MODULE_REGISTER(mailbox, CONFIG_LOG_DEFAULT_LEVEL);
 static uint32_t gFailedUpdateAttempts = 0;
 const struct device *gSwMbxDev = NULL;
 
-uint8_t gUfmFifoData[64];
-uint8_t gReadFifoData[64];
+uint8_t gUfmFifoData[SWMBX_WRITE_FIFO_SIZE];
+uint8_t gReadFifoData[SWMBX_READ_FIFO_SIZE];
 uint8_t gRootKeyHash[SHA384_DIGEST_LENGTH];
 uint8_t gPchOffsets[PCH_OFFSET_SIZE];
 uint8_t gBmcOffsets[BMC_OFFSET_SIZE];
@@ -509,8 +510,10 @@ void InitializeSoftwareMailbox(void)
 	swmbx_enable_behavior(swmbx_dev, SWMBX_PROTECT | SWMBX_NOTIFY | SWMBX_FIFO, 1);
 
 	/* Register mailbox notification semphore */
-	swmbx_update_fifo(swmbx_dev, &ufm_write_fifo_state_sem, 0, UfmWriteFIFO, 0x40, SWMBX_FIFO_NOTIFY_STOP, true);
-	swmbx_update_fifo(swmbx_dev, &ufm_read_fifo_state_sem, 1, UfmReadFIFO, 0x40, SWMBX_FIFO_NOTIFY_STOP, true);
+	swmbx_update_fifo(swmbx_dev, &ufm_write_fifo_state_sem, 0, UfmWriteFIFO,
+			SWMBX_WRITE_FIFO_SIZE, SWMBX_FIFO_NOTIFY_STOP, true);
+	swmbx_update_fifo(swmbx_dev, &ufm_read_fifo_state_sem, 1, UfmReadFIFO,
+			SWMBX_READ_FIFO_SIZE, SWMBX_FIFO_NOTIFY_STOP, true);
 
 	set_secure_connection_state(false);
 	/* Register slave device to bus device */
@@ -1166,10 +1169,20 @@ void EnableSpdmAttestation(bool enable)
 			(uint8_t *)&cpld_status, sizeof(CPLD_STATUS));
 }
 
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
 void ReadDeviceIdPublicKey(void)
 {
+	uint32_t pub_key_addr = 0;
+	uint8_t buf[ECDSA384_PUBLIC_KEY_SIZE];
 
+	pub_key_addr = offsetof(PFR_DEVID_CERT_INFO, pubkey);
+	pfr_spi_read(ROT_INTERNAL_CERTIFICATE, pub_key_addr, sizeof(buf), buf);
+
+	memcpy(gReadFifoData, buf, sizeof(buf));
+	for (size_t i = 0; i < sizeof(buf); ++i)
+		swmbx_write(gSwMbxDev, true, UfmReadFIFO, buf + i);
 }
+#endif
 #endif
 
 void lock_provision_flash(void)
@@ -1332,9 +1345,11 @@ void process_provision_command(void)
 		LOG_INF("Enable SPDM Attestation");
 		EnableSpdmAttestation(true);
 		break;
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
 	case READ_DEVICE_ID_PUBLIC_KEY:
 		ReadDeviceIdPublicKey();
 		break;
+#endif
 	case DISABLE_DEVICE_ATTESTATION_REQUESTS:
 		LOG_INF("Disable SPDM Attestation");
 		EnableSpdmAttestation(false);

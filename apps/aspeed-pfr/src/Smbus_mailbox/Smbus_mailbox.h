@@ -276,6 +276,9 @@ int swmbx_mctp_i3c_doe_msg_read_handler(uint8_t addr, uint8_t data_len, uint8_t 
 #define PCH_OFFSET_SIZE 12
 #define AFM_OFFSET_SIZE 4
 
+#define SWMBX_READ_FIFO_SIZE 128
+#define SWMBX_WRITE_FIFO_SIZE 64
+
 typedef enum {
 	SECURE_CONNECTION_DISABLE,
 	SECURE_CONNECTION_LOOSE_MODE,

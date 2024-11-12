@@ -27,17 +27,13 @@
 // Certificate Chain
 #include "Certificates/bundle_responder.certchain.der.h"
 #include "Certificates/bundle_responder.certchain1.der.h"
+#include "Certificates/certificate_utils.h"
 #if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
 #include "Certificates/bundle_requester.certchain.der.h"
 #include "Certificates/bundle_requester.certchain1.der.h"
 #endif
 
 LOG_MODULE_REGISTER(spdm, CONFIG_LOG_DEFAULT_LEVEL);
-
-
-#define SHA384_HASH_LENGTH                (384 / 8)
-#define ECDSA384_PRIVATE_KEY_SIZE         (SHA384_HASH_LENGTH + 1)
-#define ECDSA384_PUBLIC_KEY_SIZE          (SHA384_HASH_LENGTH * 2 + 1)
 
 #include <zephyr/storage/flash_map.h>
 #include <mbedtls/sha512.h>
