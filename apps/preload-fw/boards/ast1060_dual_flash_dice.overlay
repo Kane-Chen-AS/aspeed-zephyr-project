@@ -229,3 +229,6 @@
 	status = "okay";
 };
 
+&uart5 {
+	status = "okay";
+};
