@@ -26,6 +26,7 @@ target_sources(app PRIVATE
 	ResponseCmd/SPDMCertificate.c
 	ResponseCmd/SPDMVersion.c
 	ResponseCmd/SPDMChallengeAuth.c
+	ResponseCmd/GetMeasurementImpl.c
 	)
 
 if(CONFIG_SECURE_CONNECTION_RESPONDER OR CONFIG_SECURE_CONNECTION_REQUESTER)

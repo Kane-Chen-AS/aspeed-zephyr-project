@@ -40,7 +40,7 @@ int spdm_handle_negotiate_algorithms(void *ctx, void *req, void *rsp)
 
 	spdm_buffer_get_u8(&req_msg->buffer, &measurement_spec_sel);
 	if ((measurement_spec_sel & SPDM_MEASUREMENT_BLOCK_DMTF_SPEC) == 0) {
-		LOG_ERR("NEGOTIATE_ALGORITHMS MeasurmentSpecificationSel=%02x not consent",
+		LOG_ERR("NEGOTIATE_ALGORITHMS MeasurementSpecificationSel=%02x not consent",
 				measurement_spec_sel);
 		rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
 		goto cleanup;
@@ -91,44 +91,45 @@ int spdm_handle_negotiate_algorithms(void *ctx, void *req, void *rsp)
 			// [2:3] AlgorithmID
 			spdm_buffer_get_u32(&req_msg->buffer, &context->remote.algorithms.ext_hash_sel[i]);
 		}
-		/* ReqAlgStruct */
-		uint8_t alg_type;
-		// Type of algorithm.
-		// 0 and 1. Reserved.
-		// 2. DHE.
-		// 3. AEADCipherSuite.
-		// 4. ReqBaseAsymAlg.
-		// 5. KeySchedule.
-		// All other values reserved
-		spdm_buffer_get_u8(&req_msg->buffer, &alg_type);
-		if (alg_type <= 1 || alg_type > 5) {
-			LOG_ERR("ReqAlgStruct.AlgType incorrect %02x", alg_type);
-			rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
-			goto cleanup;
+		if (req_msg->header.param1) {
+			/* ReqAlgStruct */
+			uint8_t alg_type;
+			// Type of algorithm.
+			// 0 and 1. Reserved.
+			// 2. DHE.
+			// 3. AEADCipherSuite.
+			// 4. ReqBaseAsymAlg.
+			// 5. KeySchedule.
+			// All other values reserved
+			spdm_buffer_get_u8(&req_msg->buffer, &alg_type);
+			if (alg_type <= 1 || alg_type > 5) {
+				LOG_ERR("ReqAlgStruct.AlgType incorrect %02x", alg_type);
+				rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
+				goto cleanup;
+			}
+
+			uint8_t alg_count;
+			// AlgCount:
+			// Bit[7:4] Number of bytes required to describe Requester supported SPDM
+			//          enumerated fixed algorithms (= FixedAlgCount ).
+			//          FixedAlgCount + 2 shall be a multiple of 4.
+			// Bit[3:0] Number of Requester-supported extended algorithms (= ExtAlgCount )
+			spdm_buffer_get_u8(&req_msg->buffer, &alg_count);
+			if ((((alg_count & 0xf0) >> 4) + 2) % 4 != 0) {
+				LOG_ERR("ReqAlgStruct.AlgCount incorrect %02x", alg_count);
+				rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
+				goto cleanup;
+			}
+
+			uint16_t alg_supported;
+
+			spdm_buffer_get_u16(&req_msg->buffer, &alg_supported);
+			for (size_t i = 0; i < (size_t)(alg_count & 0x0f); ++i) {
+				uint32_t alg_external;
+
+				spdm_buffer_get_u32(&req_msg->buffer, &alg_external);
+			}
 		}
-
-		uint8_t alg_count;
-		// AlgCount:
-		// Bit[7:4] Number of bytes required to describe Requester supported SPDM
-		//          enumerated fixed algorithms (= FixedAlgCount ).
-		//          FixedAlgCount + 2 shall be a multiple of 4.
-		// Bit[3:0] Number of Requester-supported extended algorithms (= ExtAlgCount )
-		spdm_buffer_get_u8(&req_msg->buffer, &alg_count);
-		if ((((alg_count & 0xf0) >> 4) + 2) % 4 != 0) {
-			LOG_ERR("ReqAlgStruct.AlgCount incorrect %02x", alg_count);
-			rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
-			goto cleanup;
-		}
-
-		uint16_t alg_supported;
-
-		spdm_buffer_get_u16(&req_msg->buffer, &alg_supported);
-		for (size_t i = 0; i < (size_t)(alg_count & 0x0f); ++i) {
-			uint32_t alg_external;
-
-			spdm_buffer_get_u32(&req_msg->buffer, &alg_external);
-		}
-
 	}
 
 	/* Compare with local algorithm */

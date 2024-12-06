@@ -32,142 +32,10 @@
 #include "Certificates/bundle_requester.certchain.der.h"
 #include "Certificates/bundle_requester.certchain1.der.h"
 #endif
+#include "SPDM/ResponseCmd/GetMeasurementImpl.h"
+
 
 LOG_MODULE_REGISTER(spdm, CONFIG_LOG_DEFAULT_LEVEL);
-
-#include <zephyr/storage/flash_map.h>
-#include <mbedtls/sha512.h>
-
-int get_measurement_by_index(uint8_t measurement_index, uint8_t *measurement, size_t *measurement_size)
-{
-	/* Calculate specific measurement */
-	const struct flash_area *area_measured = NULL;
-	size_t area_size = 0;
-
-	int ret;
-
-	/* TODO: Measurement blocks
-	 * 1: MCUBoot bootloader, measured by secure boot engine (ROT)
-	 * 2: Primary firmware, measured by MCUBoot bootloader (COT1)
-	 * 3: Secondary firmware, measured by MCUBoot bootloader (COT2)
-	 */
-
-	LOG_INF("MEASURE Index[%d]", measurement_index);
-	switch (measurement_index) {
-	case 1:
-		ret = flash_area_open(FIXED_PARTITION_ID(active_partition), &area_measured);
-		area_size = FIXED_PARTITION_SIZE(active_partition);
-		break;
-#if 0
-	case 2:
-		ret = flash_area_open(FIXED_PARTITION_ID(active_partition), &area_measured);
-		area_size = FIXED_PARTITION_SIZE(active_partition);
-		break;
-	case 3:
-		ret = flash_area_open(FIXED_PARTITION_ID(recovery_partition), &area_measured);
-		area_size = FIXED_PARTITION_SIZE(recovery_partition);
-		break;
-#endif
-	default:
-		ret = -1;
-		break;
-	}
-
-	if (ret != 0) {
-		LOG_ERR("Failed to open flash area");
-		*measurement_size = 0;
-		return -1;
-	}
-
-
-	mbedtls_sha512_context sha_ctx;
-	size_t offset = 0, read_size;
-	static uint8_t buffer[4096] NON_CACHED_BSS_ALIGN16;
-
-	mbedtls_sha512_init(&sha_ctx);
-	mbedtls_sha512_starts(&sha_ctx, 1 /* SHA-384 */);
-	while (offset < area_size) {
-		read_size = (area_size - offset) > sizeof(buffer) ?
-			sizeof(buffer) : (area_size - offset);
-		ret = flash_area_read(area_measured, offset, buffer, read_size);
-		if (ret != 0) {
-			LOG_ERR("flash_area_read offset=0x%x read_size=%d ret=%d", offset, read_size, ret);
-			break;
-		}
-		mbedtls_sha512_update(&sha_ctx, buffer, read_size);
-		offset += read_size;
-	}
-	flash_area_close(area_measured);
-
-	/* Measurement block:
-	 * 0x00 - Index, Shall represent the index of the measurement
-	 * 0x01 - MeasurementSpecification (Bit[0] DMTF MeasurementSpec)
-	 * 0x02 - MeasurementSize in bytes
-	 * 0x04 - Measurement
-	 *        0x00 - DMTFSpecMeasurementValueType
-	 *               Bit[7]:   0b Hash, 1b Raw bit stream
-	 *               Bit[6:0]: 00h Immutable ROM
-	 *                         01h Mutable firmware
-	 *                         02h Hardware configuration, such as straps, debug modes
-	 *                         03h Firmware configuration, such as configurable firmware policy
-	 *        0x01 - DMTFSpecMeasurementValueSize, uint16_t
-	 *        0x03 - DMTFSpecMeasureMentValue
-	 */
-	measurement[0] = measurement_index;
-	measurement[1] = SPDM_MEASUREMENT_BLOCK_DMTF_SPEC; // Bit 0=DMTF
-	measurement[2] = 48;
-	measurement[3] = 0;
-	measurement[4 + 0] = SPDM_MEASUREMENT_BLOCK_DMTF_TYPE_MUTABLE_FIRMWARE; // Hashed mutable firmware
-	measurement[4 + 1] = 48;
-	measurement[4 + 2] = 0;
-	mbedtls_sha512_finish(&sha_ctx, measurement + 4 + 3);
-
-	mbedtls_sha512_free(&sha_ctx);
-	LOG_HEXDUMP_DBG(measurement, 48+4, "Measurement SHA-384:");
-
-
-	*measurement_size = 48+4;
-
-	return 0;
-}
-
-int get_measurement(void *context,
-		uint8_t measurement_index, uint8_t *measurement_count,
-		uint8_t *measurement, size_t *measurement_size)
-{
-	int ret = 0;
-
-	if (measurement_index == SPDM_MEASUREMENT_OPERATION_TOTAL_NUMBER) {
-		/* Return the number of measurements in count */
-		*measurement_count = 1;
-		*measurement_size = 0;
-	} else if (measurement_index == SPDM_MEASUREMENT_OPERATION_ALL_MEASUREMENTS) {
-		/* Calculate all measurements */
-		size_t offset = 0, remain_size = *measurement_size;
-
-		get_measurement_by_index(1, measurement + offset, measurement_size);
-		offset += *measurement_size;
-		remain_size -= *measurement_size;
-		*measurement_size = remain_size;
-#if 0
-		get_measurement_by_index(2, measurement + offset, measurement_size);
-		offset += *measurement_size;
-		remain_size -= *measurement_size;
-		*measurement_size = remain_size;
-		get_measurement_by_index(3, measurement + offset, measurement_size);
-		offset += *measurement_size;
-		*measurement_count = 3;
-		*measurement_size = offset;
-#endif
-	} else {
-		ret = get_measurement_by_index(measurement_index, measurement, measurement_size);
-		if (ret == 0)
-			*measurement_count = 1;
-		else
-			*measurement_count = 0;
-	}
-	return ret;
-}
 
 bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, uint8_t bus, uint8_t dst_sa, uint8_t dst_eid)
 {
@@ -240,7 +108,7 @@ void init_responder_context(struct spdm_context *context)
 //	spdm_load_certificate(context, false, 0, devid_cert_der, devid_cert_der_len);
 //	spdm_load_certificate(context, false, 1, alias_cert_der, alias_cert_der_len);
 
-	context->get_measurement = get_measurement;
+	register_get_measurement(context);
 
 	ret = mbedtls_ecp_group_load(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
 			MBEDTLS_ECP_DP_SECP384R1);

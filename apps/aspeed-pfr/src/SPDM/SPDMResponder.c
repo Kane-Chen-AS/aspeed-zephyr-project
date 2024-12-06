@@ -276,6 +276,8 @@ static void handler(void *ctx, void *req, void *rsp, uint32_t *session_id)
 			ret = spdm_handle_get_version(context, req_msg, rsp_msg);
 			if (ret == 0)
 				context->connection_state = SPDM_STATE_GOT_VERSION;
+		} else if (req_msg->header.request_response_code == SPDM_REQ_GET_MEASUREMENTS) {
+			ret = spdm_handle_get_measurements(context, req_msg, rsp_msg);
 		}
 		break;
 	case SPDM_STATE_CHANLLENGED:
