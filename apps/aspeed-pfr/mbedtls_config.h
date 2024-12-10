@@ -15,5 +15,8 @@
 #define MBEDTLS_ECDH_C
 #define MBEDTLS_AES_FEWER_TABLES
 
+#define MBEDTLS_GCM_C
+#define MBEDTLS_AES_C
+
 //#define MBEDTLS_LMS_C
 //#define MBEDTLS_LMS_PRIVATE
