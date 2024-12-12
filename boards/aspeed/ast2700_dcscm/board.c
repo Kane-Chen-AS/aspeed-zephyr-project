@@ -128,11 +128,6 @@ K_TIMER_DEFINE(dcscm_sgpio_passthrough_workaround,
 
 static int ast2700_sgpio_workaround_init(void)
 {
-#define SCU_PIN_CTRL4      0x7e6e241c
-	uint32_t pinctrl_val = sys_read32(SCU_PIN_CTRL4);
-	pinctrl_val &= ~BIT(12);
-	sys_write32(pinctrl_val, SCU_PIN_CTRL4);
-
 	const struct device *dev = device_get_binding("gpio0_m_p");
 	if (dev) {
 		int ret = gpio_pin_configure(dev, 12, GPIO_OUTPUT);
