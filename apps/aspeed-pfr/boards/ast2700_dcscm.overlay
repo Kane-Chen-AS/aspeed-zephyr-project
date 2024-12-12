@@ -64,9 +64,9 @@
 	pinctrl-0 = <pinctrl_i3c0_default>;
 
 	// i3chub
-	i3cdev@4cd7515a106 {
+	i3cdev@4cdffffffff {
 		compatible = "i3c-dummy-device";
-		reg = <0x0 0x4cd 0x7515a106>;
+		reg = <0x0 0x4cd 0xffffffff>;
 		status = "okay";
 	};
 
