@@ -87,7 +87,7 @@ config PFR_SPDM_I3C_BMC_DEV_PID
 	hex "I3C device pid for BMC"
 
 config PFR_SPDM_I3C_HUB_DEV_PID
-	default 0x4cd7515a106
+	default 0x4cdffffffff
 	hex "I3C device pid for i3c hub"
 
 config PFR_SPDM_I3C_CPU0_DEV_PID
