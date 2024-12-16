@@ -1302,8 +1302,15 @@ void handle_checkpoint(void *o)
 			mctp_i3c_configure_cpu_i3c_devs();
 #endif
 #endif
-			UpdateBmcCheckpoint(evt_ctx->data.bit8[1]);
 		}
+		/*
+		 * After setting the BMC boot complete state, the BMC
+		 * will start the process to add PFR MCTP device. So, we
+		 * need to setup the MCTP I3C interface before setting
+		 * BMC boot complete state. Otherwise, it may cause a problem
+		 * to add the PFR MCTP device.
+		 */
+		UpdateBmcCheckpoint(evt_ctx->data.bit8[1]);
 		break;
 #if defined(CONFIG_INTEL_PFR)
 	case AcmCheckpoint:
@@ -1311,7 +1318,6 @@ void handle_checkpoint(void *o)
 		break;
 #endif
 	case BiosCheckpoint:
-		UpdateBiosCheckpoint(evt_ctx->data.bit8[1]);
 		if (evt_ctx->data.bit8[1] == CompletingExecutionBlock) {
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 			if (state->afm_active_object.ActiveImageStatus == Success) {
@@ -1319,6 +1325,7 @@ void handle_checkpoint(void *o)
 			}
 #endif
 		}
+		UpdateBiosCheckpoint(evt_ctx->data.bit8[1]);
 		break;
 	default:
 		break;
