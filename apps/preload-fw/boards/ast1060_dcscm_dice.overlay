@@ -206,6 +206,14 @@
 	status = "okay";
 };
 
-&uart5 {
+&hace {
+	status = "okay";
+};
+
+&rsa {
+	status = "okay";
+};
+
+&ecdsa {
 	status = "okay";
 };

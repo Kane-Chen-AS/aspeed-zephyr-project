@@ -1,4 +1,3 @@
-#include <aspeed/ast10x0.dtsi>
 #include "ast1060_dcscm_gpio_common.dts"
 #include "ast1060_dcscm_gpio_bhs.dts"
 
@@ -365,6 +364,14 @@
 	};
 };
 
-&uart5 {
+&hace {
+	status = "okay";
+};
+
+&rsa {
+	status = "okay";
+};
+
+&ecdsa {
 	status = "okay";
 };
