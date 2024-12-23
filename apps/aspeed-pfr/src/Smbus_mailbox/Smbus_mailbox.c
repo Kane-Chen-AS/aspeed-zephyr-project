@@ -656,16 +656,20 @@ MBX_REG_SETTER_GETTER(PfrActivityInfo2);
 #define LED_DEVICE "leds"
 #define FP_GREEN_LED DT_NODE_CHILD_IDX(DT_NODELABEL(pfr_fp_green_led_out))
 #define FP_AMBER_LED DT_NODE_CHILD_IDX(DT_NODELABEL(pfr_fp_amber_led_out))
+#define FP_ID_LED    DT_NODE_CHILD_IDX(DT_NODELABEL(pfr_fp_id_led_out))
 
 static const struct device *led_dev = NULL;
 static const struct gpio_dt_spec bmc_fp_green = GPIO_DT_SPEC_GET(DT_ALIAS(fp_input0), gpios);
 static const struct gpio_dt_spec bmc_fp_amber = GPIO_DT_SPEC_GET(DT_ALIAS(fp_input1), gpios);
+static const struct gpio_dt_spec bmc_fp_id = GPIO_DT_SPEC_GET(DT_ALIAS(fp_input2), gpios);
 static bool fp_green_on;
 static bool fp_amber_on;
+static bool fp_id_on;
 static bool bypass_bmc_fp_signal;
 
 static struct gpio_callback bmc_fp_green_cb_data;
 static struct gpio_callback bmc_fp_amber_cb_data;
+static struct gpio_callback bmc_fp_id_cb_data;
 
 void fp_amber_led_ctrl_callback(struct k_timer *timer_id)
 {
@@ -684,6 +688,8 @@ void bmc_fp_led_handler(const struct device *dev, struct gpio_callback *cb, uint
 		led_id = FP_GREEN_LED;
 	else if (gpio_pin == bmc_fp_amber.pin)
 		led_id = FP_AMBER_LED;
+	else if (gpio_pin == bmc_fp_id.pin)
+		led_id = FP_ID_LED;
 	else
 		return;
 
@@ -696,8 +702,12 @@ void bmc_fp_led_handler(const struct device *dev, struct gpio_callback *cb, uint
 	ret ? led_on(led_dev, led_id) : led_off(led_dev, led_id);
 	if (led_id == FP_GREEN_LED)
 		fp_green_on = (bool)ret;
-	else
+	else if (led_id == FP_AMBER_LED)
 		fp_amber_on = (bool)ret;
+	else if (led_id == FP_ID_LED)
+		fp_id_on = (bool)ret;
+	else
+		LOG_ERR("Unknown LED ID");
 }
 
 void initializeFPLEDs(void)
@@ -708,6 +718,8 @@ void initializeFPLEDs(void)
 	fp_green_on = false;
 	led_off(led_dev, FP_AMBER_LED);
 	fp_amber_on = false;
+	led_off(led_dev, FP_ID_LED);
+	fp_id_on = false;
 
 	// init bmc_fp_green_led
 	if (!device_is_ready(bmc_fp_green.port)) {
@@ -728,6 +740,15 @@ void initializeFPLEDs(void)
 	gpio_pin_interrupt_configure_dt(&bmc_fp_amber, GPIO_INT_EDGE_BOTH);
 	gpio_init_callback(&bmc_fp_amber_cb_data, bmc_fp_led_handler, BIT(bmc_fp_amber.pin));
 	gpio_add_callback(bmc_fp_amber.port, &bmc_fp_amber_cb_data);
+
+	if (!device_is_ready(bmc_fp_id.port)) {
+		LOG_ERR("BMC FP ID LED is not ready");
+		return;
+	}
+	gpio_pin_configure_dt(&bmc_fp_id, GPIO_INPUT);
+	gpio_pin_interrupt_configure_dt(&bmc_fp_id, GPIO_INT_EDGE_BOTH);
+	gpio_init_callback(&bmc_fp_id_cb_data, bmc_fp_led_handler, BIT(bmc_fp_id.pin));
+	gpio_add_callback(bmc_fp_id.port, &bmc_fp_id_cb_data);
 }
 
 K_TIMER_DEFINE(fpled_timer, fp_amber_led_ctrl_callback, NULL);
@@ -736,12 +757,12 @@ void SetFPLEDState(byte PlatformStateData)
 {
 	// FP LED behavior
 	//
-	// |  Green  |  Amber  | State    |
-	// --------------------------------
-	// |   Lit   |  Off    | Verify   |
-	// |   Off   |  Blink  | Recovery |
-	// |   Off   |  Lit    | Update   |
-	// | PassThr | PassThr | Tzero    |
+	// |  Green  |  Amber  |   ID    | State    |
+	// --------------------|---------|------------
+	// |   Lit   |  Off    | Bypass  | Verify   |
+	// |   Off   |  Blink  | Bypass  | Recovery |
+	// |   Off   |  Lit    | Bypass  | Update   |
+	// | PassThr | PassThr | PassThr | Tzero    |
 	if (PlatformStateData == PCH_FW_UPDATE ||
 	    PlatformStateData == BMC_FW_UPDATE ||
 	    PlatformStateData == CPLD_FW_UPDATE) {
@@ -781,6 +802,14 @@ void SetFPLEDState(byte PlatformStateData)
 		}
 		pin_state ? led_on(led_dev, FP_AMBER_LED) : led_off(led_dev, FP_AMBER_LED);
 		fp_amber_on = pin_state;
+
+		pin_state = gpio_pin_get(bmc_fp_id.port, bmc_fp_id.pin);
+		if (pin_state < 0) {
+			LOG_ERR("Failed to get BMC_FP_ID_LED");
+			return;
+		}
+		pin_state ? led_on(led_dev, FP_ID_LED) : led_off(led_dev, FP_ID_LED);
+		fp_id_on = pin_state;
 	}
 }
 #endif
