@@ -4,6 +4,7 @@
 
 		// 0-31
 		pwrgd-cpu0-out-gpios = <&sgpiom_a_d 5 0>;
+		i3c-mng-mux-sel-out-gpios = <&sgpiom_a_d 6 0>;
 		rst-pltrst-cpu0-out-gpios = <&sgpiom_a_d 10 0>;
 		rst-rtcrst-cpu0-out-gpios = <&sgpiom_a_d 11 0>;
 		bmc-pwr-btn-out-gpios = <&sgpiom_a_d 15 0>;
