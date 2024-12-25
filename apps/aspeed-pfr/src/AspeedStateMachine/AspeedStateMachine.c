@@ -1841,10 +1841,12 @@ void do_unprovisioned(void *o)
 		handle_unprovisioned_checkpoint(o);
 #if defined(CONFIG_PFR_MCTP_I3C)
 		if (evt_ctx->data.bit8[1] == PausingExecutionBlock) {
+			if (evt_ctx->data.bit8[0] == BmcCheckpoint) {
 #if !defined(CONFIG_PFR_MCTP_I3C_5_0)
-			switch_i3c_mng_owner(I3C_MNG_OWNER_ROT);
-			mctp_i3c_configure_cpu_i3c_devs();
+				switch_i3c_mng_owner(I3C_MNG_OWNER_ROT);
+				mctp_i3c_configure_cpu_i3c_devs();
 #endif
+			}
 		} else if (evt_ctx->data.bit8[1] == CompletingExecutionBlock) {
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 			mctp_i3c_target_intf_init();
