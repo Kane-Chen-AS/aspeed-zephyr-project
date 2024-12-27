@@ -27,5 +27,5 @@ manifest:
       path: middlewares/cerberus
     - name: mcuboot
       remote: gerrit
-      revision: b8997cd49b5d895105989c41da60a1619d80b1f9
+      revision: 39106c68eb2d2334c422553c9e6ce09a9af49f26
       path: bootloader/mcuboot
