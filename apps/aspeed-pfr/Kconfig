@@ -199,7 +199,6 @@ config LMS_SIGN_SERIAL_OFFSET
 
 config OTP_SIM
 	depends on !OTP_ASPEED
-	depends on !PFR_SPDM_ATTESTATION
 	default n
 	bool "Simulate OTP"
 	help
