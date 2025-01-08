@@ -144,10 +144,62 @@ void spdm_context_release(void *ctx)
 	free(context);
 }
 
+bool is_root_cert(uint8_t *cert_data, uint16_t len)
+{
+	mbedtls_x509_crt cert;
+	int ret;
+
+	mbedtls_x509_crt_init(&cert);
+	ret = mbedtls_x509_crt_parse_der(&cert, cert_data, len);
+
+	if (cert.issuer_raw.len != cert.subject_raw.len)
+		return false;
+
+	if (memcmp(cert.issuer_raw.p, cert.subject_raw.p, cert.issuer_raw.len))
+		return false;
+
+	return true;
+}
+
+int get_root_cert_len(uint8_t *cert_data, uint16_t cert_len, uint8_t **root_cert)
+{
+	uint8_t *tmp;
+	uint8_t *current_cert;
+	int ret;
+	size_t asn1_len;
+	size_t ca_cert_len;
+
+	current_cert = cert_data;
+	while (true) {
+		tmp = current_cert;
+		ret = mbedtls_asn1_get_tag(
+			&tmp, cert_data + cert_len, &asn1_len,
+			MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE);
+		if (ret != 0) {
+			LOG_ERR("mbedtls_asn1_get_tag failed, ret = %x", ret);
+			return -1;
+		}
+		ca_cert_len = asn1_len + (tmp - cert_data);
+
+		if (is_root_cert(current_cert, ca_cert_len)) {
+			*root_cert = current_cert;
+			return ca_cert_len;
+		}
+
+		current_cert += ca_cert_len;
+		if (current_cert >= cert_data + cert_len)
+			return -1;
+	}
+
+	return -1;
+}
+
 int spdm_load_certificate(void *ctx, bool remote, uint8_t slot_id, void *cert_data, uint16_t cert_len)
 {
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	struct spdm_certificate_info *cert_info = &context->local.certificate;
+	uint16_t len;
+	uint8_t *root_cert = NULL;
 
 	if (remote)
 		cert_info = &context->remote.certificate;
@@ -158,7 +210,7 @@ int spdm_load_certificate(void *ctx, bool remote, uint8_t slot_id, void *cert_da
 	}
 
 	if (cert_info->slot_mask & (1<<slot_id)) {
-		LOG_ERR("Slot_id[%d] already occupided, slot_mask[%x]", slot_id, cert_info->slot_mask);
+		LOG_ERR("Slot_id[%d] already occupied, slot_mask[%x]", slot_id, cert_info->slot_mask);
 		return -1;
 	}
 
@@ -174,16 +226,70 @@ int spdm_load_certificate(void *ctx, bool remote, uint8_t slot_id, void *cert_da
 	cert_info->certs[slot_id].size = cert_len + 4 + 48;
 	cert_info->certs[slot_id].data[0] = (cert_len + 4 + 48) & 0xff;
 	cert_info->certs[slot_id].data[1] = ((cert_len + 4 + 48) >> 8) & 0xff;
-
 	/* Hash the  Root Cert */
-	// TODO: Find the root cert length
-	mbedtls_sha512(cert_data, 468, cert_info->certs[slot_id].data + 4, 1);
+	len = get_root_cert_len(cert_data, cert_len, &root_cert);
+	if (len < 0) {
+		LOG_ERR("Can't find root cert from the certificate chain");
+		return -1;
+	}
+	LOG_DBG("root cert len = %d", len);
+	mbedtls_sha512(root_cert, len, cert_info->certs[slot_id].data + 4, 1);
 
 	mbedtls_sha512(cert_info->certs[slot_id].data, cert_info->certs[slot_id].size,
 		cert_info->certs[slot_id].digest, 1);
 
 	return 0;
 }
+
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
+int spdm_append_certificate_chain(void *ctx, bool remote, uint8_t slot_id, void *cert_data, uint16_t cert_len)
+{
+	struct spdm_context *context = (struct spdm_context *)ctx;
+	struct spdm_certificate_info *cert_info = &context->local.certificate;
+	uint16_t old_chain_len, new_chain_len;
+	uint8_t *tmp;
+
+	if (remote)
+		cert_info = &context->remote.certificate;
+
+	if (slot_id > 7) {
+		LOG_ERR("Invalid slot_id[%d]", slot_id);
+		return -1;
+	}
+
+	if ((cert_info->slot_mask & (1<<slot_id)) == 0) {
+		// Slot is not occupied, to use spdm_load_certificate instead
+		return spdm_load_certificate(ctx, remote, slot_id, cert_data, cert_len);
+	}
+
+	// To reallocate memory for existed certificate chain and new certificate
+	old_chain_len = cert_info->certs[slot_id].size;
+	new_chain_len = old_chain_len + cert_len;
+	tmp = malloc(new_chain_len);
+	if (tmp == NULL) {
+		LOG_ERR("Failed to allocate the memory (%d)", new_chain_len);
+		return -1;
+	}
+	// To move data to new buffer and release old buffer
+	memcpy(tmp, cert_info->certs[slot_id].data, old_chain_len);
+	free(cert_info->certs[slot_id].data);
+	cert_info->certs[slot_id].data = tmp;
+	memcpy(&tmp[old_chain_len], cert_data, cert_len);
+	cert_info->certs[slot_id].size = new_chain_len;
+	cert_info->certs[slot_id].data[0] = (new_chain_len) & 0xff;
+	cert_info->certs[slot_id].data[1] = ((new_chain_len) >> 8) & 0xff;
+
+	/*
+	 * This function is used to append alias certificate to
+	 * certificate chain so we don't need to calculate the root
+	 * cert hash again.
+	 */
+	mbedtls_sha512(cert_info->certs[slot_id].data, cert_info->certs[slot_id].size,
+		cert_info->certs[slot_id].digest, 1);
+
+	return 0;
+}
+#endif
 
 int spdm_load_root_certificate(void *cert_data, uint16_t cert_len)
 {

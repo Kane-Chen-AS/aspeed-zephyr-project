@@ -102,6 +102,20 @@ typedef struct {
 	struct spdm_message *message;
 } spdm_request_data;
 
+typedef struct {
+	uint32_t magic;
+	uint32_t len;
+	uint8_t cert[4096];
+	uint8_t hash[32];
+	uint8_t pub_key[97];
+	uint8_t type;
+} cert_info;
+
+#define DEVID_CERT_OFFSET 0
+#define ALIAS_CERT_OFFSET 0x2000
+#define CERT_DATA_MAGIC 0x43455254
+#define ALIAS_PRI_KEY_ADDR 0xbfc00
+
 void init_spdm(void);
 bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, uint8_t bus, uint8_t dst_sa, uint8_t dst_eid);
 void spdm_hexdump_helper(void *in, int len, const char *pre);

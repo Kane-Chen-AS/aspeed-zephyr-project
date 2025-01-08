@@ -346,7 +346,7 @@ int get_total_pfm_size(struct pfr_manifest *manifest, uint32_t signed_pfm_offset
 				(uint8_t *)&signed_afm);
 		total_pfm_size = afm_start_addr_in_pfm + afm_data_length - PFM_SIG_BLOCK_SIZE;
 		if (signed_afm.Block0Tag == BLOCK0TAG) {
-			LOG_INF("has AFM device data");
+			LOG_INF("PFM has AFM device data");
 			/* has AFM device data */
 			total_pfm_size += AFM_BODY_SIZE;
 		}

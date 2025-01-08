@@ -6,9 +6,11 @@
 #include <mbedtls/x509_crt.h>
 #include <mbedtls/x509.h>
 #include <mbedtls/ecp.h>
+#include <mbedtls/sha256.h>
 
 #include <soc.h>
 #include <zephyr/portability/cmsis_os2.h>
+#include <zephyr/storage/flash_map.h>
 
 #include "SPDM/SPDMCommon.h"
 #include "SPDM/SPDMMctpBinding.h"
@@ -98,17 +100,108 @@ bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, ui
 	return true;
 }
 
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
+int load_responder_cert(struct spdm_context *context, cert_info *info, uint32_t cert_offset, uint8_t slot_num)
+{
+	const struct flash_area *area_measured = NULL;
+	int ret;
+	mbedtls_sha256_context sha_ctx;
+	uint8_t cal_hash[32];
+
+	ret = flash_area_open(FIXED_PARTITION_ID(certificate_partition), &area_measured);
+	if (ret) {
+		LOG_ERR("Failed to open certificate partition, ret = %d", -ret);
+		return -1;
+	}
+
+	flash_area_read(area_measured, cert_offset, info, sizeof(cert_info));
+	if (info->magic != CERT_DATA_MAGIC) {
+		LOG_ERR("Magic number (%x) is invalid", info->magic);
+		return -1;
+	}
+
+	mbedtls_sha256_init(&sha_ctx);
+	mbedtls_sha256_starts(&sha_ctx, 0 /* SHA-256 */);
+	mbedtls_sha256_update(&sha_ctx, info->cert, info->len);
+	mbedtls_sha256_finish(&sha_ctx, cal_hash);
+	mbedtls_sha256_free(&sha_ctx);
+
+	if (memcmp(cal_hash, info->hash, 32)) {
+		LOG_ERR("Certificate chain hash is not matched");
+		LOG_HEXDUMP_ERR(info->hash, 32, "Expected hash");
+		LOG_HEXDUMP_ERR(cal_hash, 32, "Calculated hash");
+		return -1;
+	}
+
+	if (cert_offset == ALIAS_CERT_OFFSET) {
+		/*
+		 * To append Alias cert to the DevID cert chain because Alias cert
+		 * is signed by DevID cert
+		 */
+		if (spdm_append_certificate_chain(context, false, slot_num, info->cert,
+			info->len))
+			return -1;
+	} else {
+		if (spdm_load_certificate(context, false, slot_num, info->cert, info->len))
+			return -1;
+	}
+
+	LOG_INF("SPDM responder certificate #%d is %s", slot_num,
+		(cert_offset == ALIAS_CERT_OFFSET)?"appended":"loaded");
+	return 0;
+}
+
+int load_responder_key(struct spdm_context *context, cert_info *info)
+{
+	int ret;
+	uint8_t *ptr = (uint8_t *)ALIAS_PRI_KEY_ADDR;
+
+	ret = load_responder_cert(context, info, ALIAS_CERT_OFFSET, 0);
+	if (ret)
+		return -1;
+
+	ret = mbedtls_ecp_group_load(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
+			MBEDTLS_ECP_DP_SECP384R1);
+	LOG_INF("mbedtls_ecp_group_load ret=%x", -ret);
+	LOG_HEXDUMP_DBG(ptr, 48+1, "Alias pri key");
+	ret = mbedtls_mpi_read_binary(&context->rsp_key_pair.MBEDTLS_PRIVATE(d),
+			ptr + 1, 48);
+	LOG_INF("mbedtls_mpi_read_binary ret=%x", -ret);
+
+	ret = mbedtls_ecp_point_read_binary(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
+			&context->rsp_key_pair.MBEDTLS_PRIVATE(Q), info->pub_key, 97);
+	LOG_HEXDUMP_DBG(info->pub_key, 97, "Alias pub key");
+	LOG_INF("mbedtls_ecp_point_read_binary ret=%x", -ret);
+
+	ret = mbedtls_ecp_check_pub_priv(&context->rsp_key_pair, &context->rsp_key_pair,
+			context->random_callback, context);
+	LOG_INF("mbedtls_ecp_check_pub_priv ret=%x", -ret);
+
+	return 0;
+}
+#endif
+
 void init_responder_context(struct spdm_context *context)
 {
 	int ret;
 
+	register_get_measurement(context);
+
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
+	static cert_info info NON_CACHED_BSS_ALIGN16;
+
+	ret = load_responder_cert(context, &info, DEVID_CERT_OFFSET, 0);
+	if (ret)
+		return;
+	ret = load_responder_key(context, &info);
+	if (ret)
+		return;
+#else
 	// Only load the leaf certificate for now
 	spdm_load_certificate(context, false, 0, bundle_responder_certchain_der, bundle_responder_certchain_der_len);
 	spdm_load_certificate(context, false, 1, bundle_responder_certchain1_der, bundle_responder_certchain1_der_len);
 //	spdm_load_certificate(context, false, 0, devid_cert_der, devid_cert_der_len);
 //	spdm_load_certificate(context, false, 1, alias_cert_der, alias_cert_der_len);
-
-	register_get_measurement(context);
 
 	ret = mbedtls_ecp_group_load(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
 			MBEDTLS_ECP_DP_SECP384R1);
@@ -118,11 +211,12 @@ void init_responder_context(struct spdm_context *context)
 	LOG_INF("mbedtls_mpi_read_binary ret=%x", -ret);
 	ret = mbedtls_ecp_point_read_binary(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
 			&context->rsp_key_pair.MBEDTLS_PRIVATE(Q),
-			end_responder_key_der + end_responder_key_der_len - 97,  97);
+			end_responder_key_der + end_responder_key_der_len - 97, 97);
 	LOG_INF("mbedtls_ecp_point_read_binary ret=%x", -ret);
 
 	ret = mbedtls_ecp_check_pub_priv(&context->rsp_key_pair, &context->rsp_key_pair, context->random_callback, context);
 	LOG_INF("mbedtls_ecp_check_pub_priv ret=%x", -ret);
+#endif
 }
 
 
