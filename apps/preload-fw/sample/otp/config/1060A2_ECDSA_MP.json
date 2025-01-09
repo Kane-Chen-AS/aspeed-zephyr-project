@@ -8,7 +8,7 @@
                 "types": "ecdsa_pub",
                 "key_pem": "rk384_pub.pem",
                 "offset": "0x480",
-                "number_id": 0
+                "number_id": 1
             }
         ]
     },
