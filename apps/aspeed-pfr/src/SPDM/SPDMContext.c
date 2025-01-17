@@ -147,18 +147,27 @@ void spdm_context_release(void *ctx)
 bool is_root_cert(uint8_t *cert_data, uint16_t len)
 {
 	mbedtls_x509_crt cert;
-	int ret;
+	int ret = false;
 
 	mbedtls_x509_crt_init(&cert);
 	ret = mbedtls_x509_crt_parse_der(&cert, cert_data, len);
+	if (ret) {
+		LOG_ERR("mbedtls_x509_crt_parse_der return failure, ret = %x", -ret);
+		ret = false;
+		goto out;
+	}
 
 	if (cert.issuer_raw.len != cert.subject_raw.len)
-		return false;
+		goto out;
 
 	if (memcmp(cert.issuer_raw.p, cert.subject_raw.p, cert.issuer_raw.len))
-		return false;
+		goto out;
 
-	return true;
+	ret = true;
+out:
+	mbedtls_x509_crt_free(&cert);
+
+	return ret;
 }
 
 int get_root_cert_len(uint8_t *cert_data, uint16_t cert_len, uint8_t **root_cert)
