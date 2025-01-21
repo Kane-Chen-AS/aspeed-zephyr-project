@@ -16,7 +16,7 @@
 LOG_MODULE_REGISTER(spdm_crytpo, CONFIG_LOG_DEFAULT_LEVEL);
 
 int spdm_crypto_sign(void *ctx, uint8_t *input, size_t input_size, uint8_t *sig, size_t *sig_size,
-		bool sig_context_hash, uint8_t *sig_context, size_t sig_context_len, uint8_t key_type)
+		bool sig_context_hash, uint8_t *sig_context, size_t sig_context_len)
 {
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	int ret = -1;
@@ -65,15 +65,9 @@ int spdm_crypto_sign(void *ctx, uint8_t *input, size_t input_size, uint8_t *sig,
 		mbedtls_mpi_init(&s);
 
 		SPDM_DBG_HEXDUMP(message_hash, input_size, "Message Hash");
-		if (key_type == SPDM_RESPONSE_MODE) {
-			ret = mbedtls_ecdsa_sign(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
-				&r, &s, &context->rsp_key_pair.MBEDTLS_PRIVATE(d),
-				message_hash, input_size, context->random_callback, context);
-		} else {
-			ret = mbedtls_ecdsa_sign(&context->req_key_pair.MBEDTLS_PRIVATE(grp),
-				&r, &s, &context->req_key_pair.MBEDTLS_PRIVATE(d),
-				message_hash, input_size, context->random_callback, context);
-		}
+		ret = mbedtls_ecdsa_sign(&context->key_pair.MBEDTLS_PRIVATE(grp),
+			&r, &s, &context->key_pair.MBEDTLS_PRIVATE(d),
+			message_hash, input_size, context->random_callback, context);
 
 		if (ret != 0) {
 			LOG_ERR("mbedtls_ecdsa_sign ret=%x", -ret);

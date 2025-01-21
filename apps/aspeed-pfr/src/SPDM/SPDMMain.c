@@ -39,7 +39,13 @@
 
 LOG_MODULE_REGISTER(spdm, CONFIG_LOG_DEFAULT_LEVEL);
 
-bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, uint8_t bus, uint8_t dst_sa, uint8_t dst_eid)
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
+int load_responder_cert(struct spdm_context *context, cert_info *info, uint32_t cert_offset, uint8_t slot_num);
+int load_responder_key(struct spdm_context *context, cert_info *info);
+#endif
+
+bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium,
+	uint8_t bus, uint8_t dst_sa, uint8_t dst_eid, bool load_key)
 {
 	int ret;
 
@@ -48,53 +54,53 @@ bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, ui
 		LOG_ERR("spdm_mctp_init_req return failed");
 		return false;
 	}
+
+	if (load_key) {
 #if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
-	spdm_load_certificate(context, false, 0, bundle_requester_certchain_der,
-			bundle_requester_certchain_der_len);
-	spdm_load_certificate(context, false, 1, bundle_requester_certchain1_der,
-			bundle_requester_certchain1_der_len);
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
+		static cert_info info NON_CACHED_BSS_ALIGN16;
+
+		ret = load_responder_cert(context, &info, DEVID_CERT_OFFSET, 0);
+		if (ret)
+			return false;
+		ret = load_responder_key(context, &info);
+		if (ret)
+			return false;
+
+#else
+		spdm_load_certificate(context, false, 0, bundle_requester_certchain_der,
+				bundle_requester_certchain_der_len);
+		spdm_load_certificate(context, false, 1, bundle_requester_certchain1_der,
+				bundle_requester_certchain1_der_len);
 #endif
+#endif
+	}
 
 	context->release_connection_data = spdm_mctp_release_req;
 
-	/* Set private/public key pair for signing */
-	ret = mbedtls_ecp_group_load(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
-			MBEDTLS_ECP_DP_SECP384R1);
-	LOG_DBG("mbedtls_ecp_group_load ret=%x", -ret);
-	ret = mbedtls_mpi_read_binary(&context->rsp_key_pair.MBEDTLS_PRIVATE(d),
-			end_responder_key_der + 8, 48);
-	LOG_DBG("mbedtls_mpi_read_binary ret=%x", -ret);
-	ret = mbedtls_ecp_point_read_binary(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
-			&context->rsp_key_pair.MBEDTLS_PRIVATE(Q),
-			end_responder_key_der + end_responder_key_der_len - 97,  97);
-	LOG_DBG("mbedtls_ecp_point_read_binary ret=%x", -ret);
-
-	ret = mbedtls_ecp_check_pub_priv(
-			&context->rsp_key_pair,
-			&context->rsp_key_pair,
-			context->random_callback,
-			context);
-	LOG_DBG("mbedtls_ecp_check_pub_priv ret=%x", -ret);
-
 #if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
-	/* Set private/public key pair for signing */
-	ret = mbedtls_ecp_group_load(&context->req_key_pair.MBEDTLS_PRIVATE(grp),
-			MBEDTLS_ECP_DP_SECP384R1);
-	LOG_DBG("mbedtls_ecp_group_load ret=%x", -ret);
-	ret = mbedtls_mpi_read_binary(&context->req_key_pair.MBEDTLS_PRIVATE(d),
-			end_requester_key_der + 8, 48);
-	LOG_DBG("mbedtls_mpi_read_binary ret=%x", -ret);
-	ret = mbedtls_ecp_point_read_binary(&context->req_key_pair.MBEDTLS_PRIVATE(grp),
-			&context->req_key_pair.MBEDTLS_PRIVATE(Q),
-			end_requester_key_der + end_requester_key_der_len - 97,  97);
-	LOG_DBG("mbedtls_ecp_point_read_binary ret=%x", -ret);
+#if !defined(CONFIG_BOARD_AST1060_DCSCM_DICE) && !defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
+	if (load_key) {
+		/* Set private/public key pair for signing */
+		ret = mbedtls_ecp_group_load(&context->key_pair.MBEDTLS_PRIVATE(grp),
+				MBEDTLS_ECP_DP_SECP384R1);
+		LOG_DBG("mbedtls_ecp_group_load ret=%x", -ret);
+		ret = mbedtls_mpi_read_binary(&context->key_pair.MBEDTLS_PRIVATE(d),
+				end_requester_key_der + 8, 48);
+		LOG_DBG("mbedtls_mpi_read_binary ret=%x", -ret);
+		ret = mbedtls_ecp_point_read_binary(&context->key_pair.MBEDTLS_PRIVATE(grp),
+				&context->key_pair.MBEDTLS_PRIVATE(Q),
+				end_requester_key_der + end_requester_key_der_len - 97, 97);
+		LOG_DBG("mbedtls_ecp_point_read_binary ret=%x", -ret);
 
-	ret = mbedtls_ecp_check_pub_priv(
-			&context->req_key_pair,
-			&context->req_key_pair,
-			context->random_callback,
-			context);
-	LOG_DBG("mbedtls_ecp_check_pub_priv ret=%x", -ret);
+		ret = mbedtls_ecp_check_pub_priv(
+				&context->key_pair,
+				&context->key_pair,
+				context->random_callback,
+				context);
+		LOG_DBG("mbedtls_ecp_check_pub_priv ret=%x", -ret);
+	}
+#endif
 #endif
 
 	return true;
@@ -160,20 +166,20 @@ int load_responder_key(struct spdm_context *context, cert_info *info)
 	if (ret)
 		return -1;
 
-	ret = mbedtls_ecp_group_load(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
+	ret = mbedtls_ecp_group_load(&context->key_pair.MBEDTLS_PRIVATE(grp),
 			MBEDTLS_ECP_DP_SECP384R1);
 	LOG_INF("mbedtls_ecp_group_load ret=%x", -ret);
 	LOG_HEXDUMP_DBG(ptr, 48+1, "Alias pri key");
-	ret = mbedtls_mpi_read_binary(&context->rsp_key_pair.MBEDTLS_PRIVATE(d),
+	ret = mbedtls_mpi_read_binary(&context->key_pair.MBEDTLS_PRIVATE(d),
 			ptr + 1, 48);
 	LOG_INF("mbedtls_mpi_read_binary ret=%x", -ret);
 
-	ret = mbedtls_ecp_point_read_binary(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
-			&context->rsp_key_pair.MBEDTLS_PRIVATE(Q), info->pub_key, 97);
+	ret = mbedtls_ecp_point_read_binary(&context->key_pair.MBEDTLS_PRIVATE(grp),
+			&context->key_pair.MBEDTLS_PRIVATE(Q), info->pub_key, 97);
 	LOG_HEXDUMP_DBG(info->pub_key, 97, "Alias pub key");
 	LOG_INF("mbedtls_ecp_point_read_binary ret=%x", -ret);
 
-	ret = mbedtls_ecp_check_pub_priv(&context->rsp_key_pair, &context->rsp_key_pair,
+	ret = mbedtls_ecp_check_pub_priv(&context->key_pair, &context->key_pair,
 			context->random_callback, context);
 	LOG_INF("mbedtls_ecp_check_pub_priv ret=%x", -ret);
 
@@ -203,18 +209,18 @@ void init_responder_context(struct spdm_context *context)
 //	spdm_load_certificate(context, false, 0, devid_cert_der, devid_cert_der_len);
 //	spdm_load_certificate(context, false, 1, alias_cert_der, alias_cert_der_len);
 
-	ret = mbedtls_ecp_group_load(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
+	ret = mbedtls_ecp_group_load(&context->key_pair.MBEDTLS_PRIVATE(grp),
 			MBEDTLS_ECP_DP_SECP384R1);
 	LOG_INF("mbedtls_ecp_group_load ret=%x", -ret);
-	ret = mbedtls_mpi_read_binary(&context->rsp_key_pair.MBEDTLS_PRIVATE(d),
+	ret = mbedtls_mpi_read_binary(&context->key_pair.MBEDTLS_PRIVATE(d),
 			end_responder_key_der + 8, 48);
 	LOG_INF("mbedtls_mpi_read_binary ret=%x", -ret);
-	ret = mbedtls_ecp_point_read_binary(&context->rsp_key_pair.MBEDTLS_PRIVATE(grp),
-			&context->rsp_key_pair.MBEDTLS_PRIVATE(Q),
+	ret = mbedtls_ecp_point_read_binary(&context->key_pair.MBEDTLS_PRIVATE(grp),
+			&context->key_pair.MBEDTLS_PRIVATE(Q),
 			end_responder_key_der + end_responder_key_der_len - 97, 97);
 	LOG_INF("mbedtls_ecp_point_read_binary ret=%x", -ret);
 
-	ret = mbedtls_ecp_check_pub_priv(&context->rsp_key_pair, &context->rsp_key_pair, context->random_callback, context);
+	ret = mbedtls_ecp_check_pub_priv(&context->key_pair, &context->key_pair, context->random_callback, context);
 	LOG_INF("mbedtls_ecp_check_pub_priv ret=%x", -ret);
 #endif
 }

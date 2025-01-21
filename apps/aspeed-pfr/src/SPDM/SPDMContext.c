@@ -100,8 +100,7 @@ void *spdm_context_create(void)
 	mbedtls_sha512_init(&context->l1l2_context);
 	mbedtls_sha512_starts(&context->l1l2_context, /* is384 */ 1);
 
-	mbedtls_ecp_keypair_init(&context->rsp_key_pair);
-	mbedtls_ecp_keypair_init(&context->req_key_pair);
+	mbedtls_ecp_keypair_init(&context->key_pair);
 
 	context->random_callback = random_callback;
 
@@ -127,8 +126,7 @@ void spdm_context_release(void *ctx)
 		mbedtls_x509_crt_free(&context->remote.certificate.certs[slot_id].chain);
 	}
 
-	mbedtls_ecp_keypair_free(&context->rsp_key_pair);
-	mbedtls_ecp_keypair_free(&context->req_key_pair);
+	mbedtls_ecp_keypair_free(&context->key_pair);
 	spdm_buffer_release(&context->message_a);
 #if defined(SPDM_TRANSCRIPT)
 	spdm_buffer_release(&context->message_b);

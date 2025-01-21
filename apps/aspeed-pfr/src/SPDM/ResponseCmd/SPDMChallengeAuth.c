@@ -87,7 +87,7 @@ int spdm_handle_challenge(void *ctx, void *req, void *rsp)
 
 	// Opaque Data: Reserved for now.
 	// Signature by selected ALGORITHMS by alias id private key
-	// Alias ID Key is in context->rsp_key_pair
+	// Alias ID Key is in context->key_pair
 	// Signature = Sign(SK, Hash(M1))
 	// - Sign(): Algorithm selected in ALGORITHMS (SECP384R1)
 	// - SK: private key associated with the leaf ceritficate of
@@ -108,8 +108,7 @@ int spdm_handle_challenge(void *ctx, void *req, void *rsp)
 
 	ret = spdm_crypto_sign(context, hash, hash_length, sig, &sig_len,
 			req_msg->header.spdm_version == SPDM_VERSION_12,
-			SPDM_SIGN_CONTEXT_M1M2_RSP, strlen(SPDM_SIGN_CONTEXT_M1M2_RSP),
-			SPDM_RESPONSE_MODE);
+			SPDM_SIGN_CONTEXT_M1M2_RSP, strlen(SPDM_SIGN_CONTEXT_M1M2_RSP));
 	if (ret == 0) {
 		SPDM_DBG_HEXDUMP(sig, sig_len, "Signature:");
 		spdm_buffer_append_array(&rsp_msg->buffer, sig, sig_len);

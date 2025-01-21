@@ -217,7 +217,7 @@ int spdm_handle_key_exchange(void *ctx, void *req, void *rsp)
 	SPDM_DBG_HEXDUMP(hash, 48, "T HASH");
 	spdm_crypto_sign(context, hash, 48, sig, &sig_size, true,
 			SPDM_SIGN_CONTEXT_KEY_EXCHANGE_RSP,
-			strlen(SPDM_SIGN_CONTEXT_KEY_EXCHANGE_RSP), SPDM_RESPONSE_MODE);
+			strlen(SPDM_SIGN_CONTEXT_KEY_EXCHANGE_RSP));
 
 	spdm_buffer_append_array(&rsp_msg->buffer, sig, sig_size);
 	mbedtls_sha512_update(&context->th2_context, sig, sig_size);

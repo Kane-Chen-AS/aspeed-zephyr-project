@@ -18,5 +18,6 @@
 #define MBEDTLS_GCM_C
 #define MBEDTLS_AES_C
 
+#define MBEDTLS_SHA512_SMALLER
 //#define MBEDTLS_LMS_C
 //#define MBEDTLS_LMS_PRIVATE

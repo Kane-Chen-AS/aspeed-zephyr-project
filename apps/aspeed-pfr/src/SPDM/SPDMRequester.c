@@ -686,7 +686,8 @@ void spdm_attestation_handle(size_t device, const uint8_t *buffer,
 			afm_device->BindingSpec,
 			afm_device->BusID,
 			afm_device->DeviceAddress,
-			MCTP_BASE_PROTOCOL_NULL_EID);
+			MCTP_BASE_PROTOCOL_NULL_EID,
+			true);
 	if (ret) {
 		create_session = create_secure_session(device, afm_device->BindingSpec, uuid_buf);
 		/* Attested the device */
@@ -780,7 +781,7 @@ void spdm_attester_main(void *a, void *b, void *c)
 {
 	static uint8_t buffer[CONFIG_PFR_SPDM_ATTESTATION_DEVICE_OFFSET] NON_CACHED_BSS_ALIGN16;
 	uint32_t events;
-	uint16_t attestation_count = CONFIG_PFR_SPDM_ATTESTATION_PERIOD - 60;
+	uint16_t attestation_count = CONFIG_PFR_SPDM_ATTESTATION_PERIOD - CONFIG_PFR_SPDM_ATTESTATION_DURATION;
 
 	osEventFlagsWait(spdm_attester_event, SPDM_REQ_EVT_ENABLE, osFlagsNoClear, osWaitForever);
 	LOG_INF("SPDM Attester Thread Enabled");

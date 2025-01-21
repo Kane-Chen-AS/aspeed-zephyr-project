@@ -62,7 +62,8 @@ int spdm_send_heartbeat(struct spdm_session_context *session)
 			session->medium,
 			session->bus,
 			session->dst_sa,
-			session->dst_eid);
+			session->dst_eid,
+			false);
 
 	if (ret == false) {
 		LOG_ERR("Init requester context failed");

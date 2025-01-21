@@ -37,7 +37,7 @@ int gen_sig_data(struct spdm_context *context, struct spdm_message *req_msg)
 
 	ret = spdm_crypto_sign(context, hash, 48, sig, &sig_size, true,
 			SPDM_SIGN_CONTEXT_FINISH_REQ,
-			strlen(SPDM_SIGN_CONTEXT_FINISH_REQ), SPDM_REQUEST_MODE);
+			strlen(SPDM_SIGN_CONTEXT_FINISH_REQ));
 
 	if (ret) {
 		LOG_ERR("Finish req sign is failed, ret = %x", -ret);

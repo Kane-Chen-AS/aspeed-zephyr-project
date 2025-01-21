@@ -100,7 +100,7 @@ int spdm_handle_get_measurements(void *ctx, void *req, void *rsp)
 	}
 
 	/* Signature */
-	// Alias ID Key is in context->rsp_key_pair
+	// Alias ID Key is in context->key_pair
 	// Signature = Sign(SK, Hash(L1))
 	// - Sign(): Algorithm selected in ALGORITHMS (SECP384R1)
 	// - SK: private key associated with the leaf ceritficate of
@@ -134,8 +134,7 @@ int spdm_handle_get_measurements(void *ctx, void *req, void *rsp)
 
 		ret = spdm_crypto_sign(context, hash, sizeof(hash), sig, &sig_len,
 				req_msg->header.spdm_version == SPDM_VERSION_12,
-				SPDM_SIGN_CONTEXT_L1L2_RSP, strlen(SPDM_SIGN_CONTEXT_L1L2_RSP),
-				SPDM_RESPONSE_MODE);
+				SPDM_SIGN_CONTEXT_L1L2_RSP, strlen(SPDM_SIGN_CONTEXT_L1L2_RSP));
 
 		if (ret == 0) {
 			spdm_buffer_resize(&rsp_msg->buffer, rsp_msg->buffer.write_ptr + sig_len);

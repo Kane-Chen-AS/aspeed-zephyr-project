@@ -111,11 +111,8 @@ struct spdm_context {
 	/* TH2 Hash Context */
 	struct mbedtls_sha512_context th2_context;
 
-	/* Private Key for responder Signing */
-	mbedtls_ecp_keypair rsp_key_pair;
-
-	/* Private Key for requster Signing */
-	mbedtls_ecp_keypair req_key_pair;
+	/* Private Key for signing */
+	mbedtls_ecp_keypair key_pair;
 
 	/* Random number wrapper */
 	int (*random_callback)(void *context, unsigned char *output, size_t output_len);

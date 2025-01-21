@@ -117,5 +117,5 @@ typedef struct {
 #define ALIAS_PRI_KEY_ADDR 0xbfc00
 
 void init_spdm(void);
-bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, uint8_t bus, uint8_t dst_sa, uint8_t dst_eid);
+bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, uint8_t bus, uint8_t dst_sa, uint8_t dst_eid, bool load_key);
 void spdm_hexdump_helper(void *in, int len, const char *pre);
