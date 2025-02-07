@@ -118,7 +118,8 @@ int spdm_handle_get_measurements(void *ctx, void *req, void *rsp)
 		 * Entire first GET_MEASUREMENTS request message under consideration, where the Requester has
 		 * requested a signature on that specific GET_MEASUREMENTS request.
 		 */
-		uint8_t hash[MBEDTLS_MD_MAX_SIZE];
+		uint8_t hash[SPDM_MAX_HASH_SIZE];
+		size_t hash_length = spdm_context_base_hash_size(context);
 
 		mbedtls_sha512_finish(&context->l1l2_context, hash);
 		LOG_HEXDUMP_DBG(hash, 48, "L1L2 Hash");
@@ -132,7 +133,7 @@ int spdm_handle_get_measurements(void *ctx, void *req, void *rsp)
 		uint8_t sig[MBEDTLS_ECDSA_MAX_LEN];
 		size_t sig_len = 0;
 
-		ret = spdm_crypto_sign(context, hash, sizeof(hash), sig, &sig_len,
+		ret = spdm_crypto_sign(context, hash, hash_length, sig, &sig_len,
 				req_msg->header.spdm_version == SPDM_VERSION_12,
 				SPDM_SIGN_CONTEXT_L1L2_RSP, strlen(SPDM_SIGN_CONTEXT_L1L2_RSP));
 

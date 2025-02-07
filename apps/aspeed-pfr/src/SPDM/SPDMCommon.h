@@ -111,6 +111,7 @@ typedef struct {
 	uint8_t type;
 } cert_info;
 
+#define SPDM_MAX_HASH_SIZE 64
 #define DEVID_CERT_OFFSET 0
 #define ALIAS_CERT_OFFSET 0x2000
 #define CERT_DATA_MAGIC 0x43455254
