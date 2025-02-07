@@ -56,7 +56,7 @@ int spdm_handle_challenge(void *ctx, void *req, void *rsp)
 	uint32_t opaque_length = 0;
 	uint32_t signature_length = MBEDTLS_ECDSA_MAX_LEN;
 	// Calculate Certificate Chain hash
-	uint8_t hash[MBEDTLS_MD_MAX_SIZE];
+	uint8_t hash[SPDM_MAX_HASH_SIZE];
 
 	spdm_buffer_init(&rsp_msg->buffer, hash_length + 32 + hash_length + 2 + opaque_length + signature_length);
 
