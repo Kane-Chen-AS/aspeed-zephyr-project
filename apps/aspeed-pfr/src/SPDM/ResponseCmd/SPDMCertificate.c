@@ -68,7 +68,12 @@ int spdm_handle_get_certificate(void *ctx, void *req, void *rsp)
 		spdm_buffer_append_u16(&rsp_msg->buffer, portion_length);
 		spdm_buffer_append_u16(&rsp_msg->buffer, cert_size - (offset + portion_length));
 	} else {
-		portion_length = cert_size - offset;
+		if (cert_size < offset) {
+			LOG_ERR("Invalid offset : %u", offset);
+			ret = -1;
+			goto cleanup;
+		}
+		portion_length = (cert_size - offset) & 0xffff;
 		spdm_buffer_init(&rsp_msg->buffer,
 				2 + 2 + portion_length);
 		spdm_buffer_append_u16(&rsp_msg->buffer, portion_length);
