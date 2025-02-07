@@ -205,7 +205,7 @@ int spdm_load_certificate(void *ctx, bool remote, uint8_t slot_id, void *cert_da
 {
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	struct spdm_certificate_info *cert_info = &context->local.certificate;
-	uint16_t len;
+	int len;
 	uint8_t *root_cert = NULL;
 
 	if (remote)
