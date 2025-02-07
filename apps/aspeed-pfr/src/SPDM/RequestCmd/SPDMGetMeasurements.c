@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: MIT
  */
-#include <zephyr/random/rand32.h>
+#include <zephyr/random/random.h>
 
 #include "intel_pfr/intel_pfr_pfm_manifest.h"
 #include "SPDM/SPDMCommon.h"
