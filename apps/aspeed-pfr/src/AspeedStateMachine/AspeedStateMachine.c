@@ -307,8 +307,10 @@ void do_init(void *o)
 		util_init_I3C();
 #if defined(CONFIG_PFR_MCTP)
 		init_pfr_mctp();
-#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+#if defined(CONFIG_PFR_SPDM_ATTESTATION) || defined(CONFIG_PFR_SPDM_RESPONDER)
 		init_spdm();
+#endif
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
 		/* Read UFM Setting */
 		if (IsSpdmAttestationEnabled()) {
 			spdm_enable_attester();

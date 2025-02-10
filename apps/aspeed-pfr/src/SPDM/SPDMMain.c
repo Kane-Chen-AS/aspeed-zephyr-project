@@ -246,9 +246,11 @@ void init_spdm(void)
 	spdm_load_root_certificate(ca1_cert_der, ca1_cert_der_len);
 	spdm_load_root_certificate(inter1_cert_der, inter1_cert_der_len);
 
+#if defined(CONFIG_PFR_SPDM_RESPONDER)
 	init_responder_context(context_rsp);
 	context_rsp_oo = context_rsp;
-
+#endif
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
 	spdm_requester_tid = k_thread_create(
 			&spdm_requester_thread_data,
 			spdm_requester_stack,
@@ -262,9 +264,11 @@ void init_spdm(void)
 	extern osEventFlagsId_t spdm_attester_event;
 
 	spdm_attester_event = osEventFlagsNew(NULL);
+#endif
 }
 
 #if defined(CONFIG_SHELL)
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
 #include <zephyr/shell/shell.h>
 #include <zephyr/portability/cmsis_os2.h>
 void spdm_request_tick(void);
@@ -364,4 +368,5 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_spdm_cmds,
 );
 
 SHELL_CMD_REGISTER(spdm, &sub_spdm_cmds, "SPDM Commands", NULL);
+#endif
 #endif
