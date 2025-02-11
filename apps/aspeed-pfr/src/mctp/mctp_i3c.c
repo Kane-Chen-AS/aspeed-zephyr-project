@@ -35,7 +35,7 @@
 #include "mctp/mctp_base_protocol.h"
 #include "cmd_channel_mctp.h"
 
-LOG_MODULE_REGISTER(mctp_i3c);
+LOG_MODULE_REGISTER(mctp_i3c, LOG_LEVEL_INF);
 
 #define I3C_0 DEVICE_DT_NAME(DT_NODELABEL(i3c0))
 #define I3C_1 DEVICE_DT_NAME(DT_NODELABEL(i3c1))
@@ -340,14 +340,17 @@ static uint16_t mctp_i3c_read(void *mctp_p, void *msg_p)
 	struct i3c_driver_data* data;
 	struct i3c_device_desc* desc;
 
+	LOG_DBG("mctp_inst=%p, msg_p=%p", mctp_inst, msg_p);
 	// read request from slave device.
 	dev = get_mctp_i3c_dev(mctp_inst->medium_conf.i3c_conf.bus);
+	LOG_DBG("mctp_inst->medium_conf.i3c_conf.bus=%d", mctp_inst->medium_conf.i3c_conf.bus);
 	if (dev == NULL) {
 		LOG_ERR("Failed to get i3c dev");
 		return MCTP_ERROR;
 	}
 	data = (struct i3c_driver_data *)dev->data;
 	desc = i3c_dev_list_i3c_addr_find(&data->attached_dev, mctp_inst->medium_conf.i3c_conf.addr);
+	LOG_DBG("mctp_inst->medium_conf.i3c_conf.addr=%d", mctp_inst->medium_conf.i3c_conf.addr);
 	if (desc == NULL) {
 		LOG_ERR("Device not found");
 		return MCTP_ERROR;
@@ -388,6 +391,7 @@ static uint16_t mctp_i3c_write(void *mctp_p, void *msg_p)
 	struct i3c_driver_data* data;
 	struct i3c_device_desc* desc;
 
+	LOG_DBG("mctp_inst=%p, msg_p=%p", mctp_inst, msg_p);
 	if (tx_msg->ext_params.type != MCTP_MEDIUM_TYPE_I3C)
 		return MCTP_ERROR;
 
@@ -398,8 +402,10 @@ static uint16_t mctp_i3c_write(void *mctp_p, void *msg_p)
 		return MCTP_ERROR;
 
 	dev = get_mctp_i3c_dev(mctp_inst->medium_conf.i3c_conf.bus);
+	LOG_DBG("mctp_inst->medium_conf.i3c_conf.bus=%d", mctp_inst->medium_conf.i3c_conf.bus);
 	data = (struct i3c_driver_data *)dev->data;
 	desc = i3c_dev_list_i3c_addr_find(&data->attached_dev, mctp_inst->medium_conf.i3c_conf.addr);
+	LOG_DBG("mctp_inst->medium_conf.i3c_conf.addr=%d", mctp_inst->medium_conf.i3c_conf.addr);
 	if (desc == NULL) {
 		LOG_ERR("Device not found");
 		return MCTP_ERROR;

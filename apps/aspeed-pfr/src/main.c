@@ -61,6 +61,17 @@ void main(void)
 {
 	LOG_INF("*** ASPEED_PFR version v%02d.%02d-dev Board:%s ***",
 			PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, CONFIG_BOARD);
+#if defined (CONFIG_BOARD_AST2700_DCSCM)
+	LOG_WRN("FOR AST2700-A1 DCSCM Board Bring Up");
+	LOG_WRN("v1 - IGNORE RSTIND");
+	LOG_WRN("v2 - Mailbox I2C5 -> I2C0");
+	LOG_WRN("v3 - Remove SGPIO workaround");
+	LOG_WRN("v4 - I3C DBG LOG");
+	LOG_WRN("v5 - Zephyr upgrade v3.7.0");
+	LOG_WRN("v6 - Mailbox I2C1 -> I2C0");
+	LOG_WRN("v7~8 - Add ast2700a0");
+	LOG_WRN("v9 - Update SGPIO table");
+#endif
 #if 0
 	// Halting for JTAG debug
 	disable_abr_wdt();

@@ -21,6 +21,16 @@ extern const struct device dev_i3c_tmq[I3C_MAX_NUM];
 #define I3C_BUS_CPU          0x00
 #define I3C_BUS_BMC          0x02
 
+#if defined(CONFIG_BOARD_AST2700_DCSCM)
+mctp_i3c_dev i3c_devs[] = {
+	{
+		// For BMC to send mctp msg to PFR
+		.i3c_conf.bus = I3C_BUS_BMC,
+		.i3c_conf.addr = 0, // will be assigned by BMC
+		.i3c_conf.dest_eid = MCTP_I3C_REGISTRATION_EID,
+	},
+};
+#else
 mctp_i3c_dev i3c_devs[] = {
 	{
 		// For BMC to brige CPU's mctp msg to PFR
@@ -35,6 +45,7 @@ mctp_i3c_dev i3c_devs[] = {
 		.i3c_conf.dest_eid = MCTP_I3C_REGISTRATION_EID,
 	},
 };
+#endif
 
 static uint16_t mctp_i3c_tmq_read(void *mctp_p, void *msg_p)
 {

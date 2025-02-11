@@ -9,7 +9,7 @@
 #include "mctp.h"
 
 /* i2c dev bus */
-#if defined(CONFIG_BOARD_AST2700_DCSCM)
+#if defined(CONFIG_BOARD_AST2700A0_DCSCM)
 #define I2C_BUS_BMC 0x05
 #else
 #define I2C_BUS_BMC 0x00

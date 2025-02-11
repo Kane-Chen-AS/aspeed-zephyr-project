@@ -11,14 +11,6 @@
 
 &i2c0 {
 	status = "okay";
-
-	swmbx0: swmbx0@38 {
-		compatible = "aspeed,swmbx-dev";
-		reg = <0x38>;
-		size = <256>;
-		port = <0>;
-		status = "okay";
-	};
 };
 
 &i2c1 {
@@ -43,6 +35,14 @@
 
 &i2c5 {
 	status = "okay";
+
+	swmbx0: swmbx0@38 {
+		compatible = "aspeed,swmbx-dev";
+		reg = <0x38>;
+		size = <256>;
+		port = <0>;
+		status = "okay";
+	};
 };
 
 &i2c6 {
@@ -53,7 +53,6 @@
 	status = "okay";
 };
 
-#if 1
 // For mctp over i3c
 // CPU0 and CPU1 -> i3chub -> AST1060 i3c-2
 &i3c0 {
@@ -100,24 +99,6 @@
 		status = "okay";
 	};
 };
-#else
-&i3c2 {
-	status = "okay";
-	dcr = <0xcc>;
-	secondary;
-
-	pinctrl-0 = < pinctrl_i3c2_default >;
-
-	i3c2_tmq:i3c-tmq@7eca0032000 {
-		compatible = "i3c-target-mqueue";
-		reg = <0x0 0x7ec 0xa0032000>;
-		msg-size = <128>;
-		num-of-msgs = <8>;
-		mandatory-data-byte = <0xae>;
-		status = "okay";
-	};
-};
-#endif
 
 &wdt0 {
 	status = "okay";
