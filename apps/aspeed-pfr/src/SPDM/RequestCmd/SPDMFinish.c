@@ -13,7 +13,7 @@ int gen_sig_data(struct spdm_context *context, struct spdm_message *req_msg)
 {
 	int ret;
 	mbedtls_sha512_context th1;
-	uint8_t hash[MBEDTLS_MD_MAX_SIZE];
+	uint8_t hash[SPDM_MAX_HASH_SIZE];
 	size_t sig_size;
 	uint8_t *sig;
 
