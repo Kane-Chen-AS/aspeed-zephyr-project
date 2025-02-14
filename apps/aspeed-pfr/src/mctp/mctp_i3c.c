@@ -236,7 +236,7 @@ int mctp_i3c_send_eid_announcement(mctp *mctp_instance, int *duration)
 		dest_eid = MCTP_I3C_CPU1_EID;
 	} else {
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
-		int i, i3c_dev_counts;
+		uint8_t i, i3c_dev_counts;
 		bool found_mctp_inst = false;
 
 		i3c_dev_counts = mctp_i3c_target_get_dev_counts();
