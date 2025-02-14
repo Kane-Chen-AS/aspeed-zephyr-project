@@ -156,7 +156,7 @@ int spdm_finish(void *ctx, uint8_t mutualauth, int index)
 	struct spdm_message req_msg, rsp_msg;
 	int ret = -1;
 	struct spdm_session_context *session;
-	uint8_t hash[MBEDTLS_MD_MAX_SIZE];
+	uint8_t hash[SPDM_MAX_HASH_SIZE];
 
 	session = find_pending_session();
 	if (session == NULL) {
