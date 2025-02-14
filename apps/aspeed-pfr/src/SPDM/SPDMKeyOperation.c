@@ -130,7 +130,8 @@ static int gen_psk_data(struct spdm_session_context *session, uint8_t *out, uint
 		// to use default pre-defined PSK data
 		*outlen = snprintf(out, *outlen, "%s", DEFAULT_PSK_DATA);
 		(*outlen)++; // for string null-end
-	} else if (memcmp(DEFAULT_PSK_HINT, session->shared_secret, session->secret_len) == 0) {
+	} else if ((session->secret_len == sizeof(DEFAULT_PSK_HINT)) &&
+		strncmp(DEFAULT_PSK_HINT, session->shared_secret, sizeof(DEFAULT_PSK_HINT) - 1) == 0) {
 		*outlen = snprintf(out, *outlen, "%s", DEFAULT_PSK_DATA);
 		(*outlen)++; // for string null-end
 	} else
