@@ -424,6 +424,7 @@ int spdm_prepare_handshake_data(struct spdm_context *context, struct spdm_sessio
 
 			if (gen_psk_data(session, psk_data, &psk_data_len)) {
 				LOG_ERR("Generate psk data failed");
+				free(handshake_secret);
 				return -1;
 			}
 			SPDM_DBG_HEXDUMP(psk_data, psk_data_len, "Shared secret");
