@@ -367,6 +367,7 @@ void enter_tmin1(void *o)
 		BMCBootHold();
 #if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
 		spdm_disable_session(afm_dev_idx_bmc);
+		set_secure_connection_state(false);
 #endif
 		evt_ctx->data.bit8[2] |= BmcOnlyReset;
 		gWdtBootStatus &= ~WDT_BMC_BOOT_DONE_MASK;
@@ -403,6 +404,7 @@ void enter_tmin1(void *o)
 		spdm_disable_session(afm_dev_idx_bmc);
 		spdm_disable_session(afm_dev_idx_cpu0);
 		spdm_disable_session(afm_dev_idx_cpu1);
+		set_secure_connection_state(false);
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 		intel_rsu_unhide_rsu();
