@@ -312,7 +312,7 @@ int spdm_gen_session_key_iv(struct spdm_context *context, struct spdm_session_co
 		return -1;
 	}
 
-	memset(session_secret, 0, sizeof(session_secret));
+	memset(session_secret, 0, 48);
 	mbedtls_hkdf_expand(md_info, master_secret, master_secret_size, bin_str, bin_size,
 			session_secret, 48);
 	SPDM_DBG_HEXDUMP(session_secret, 48, "Session secret");
