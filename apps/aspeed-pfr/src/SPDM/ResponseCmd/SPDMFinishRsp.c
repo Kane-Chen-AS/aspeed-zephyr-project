@@ -85,7 +85,7 @@ int spdm_handle_finish(void *ctx, void *req, void *rsp, uint32_t *session_id)
 	struct spdm_message *rsp_msg = (struct spdm_message *)rsp;
 	int ret = -1;
 	uint8_t key_id;
-	uint8_t hmac[MBEDTLS_MD_MAX_SIZE] = {0};
+	uint8_t hmac[SPDM_MAX_HASH_SIZE] = {0};
 	mbedtls_md_context_t *md_ctx;
 	struct spdm_session_context *session;
 
