@@ -24,7 +24,7 @@ int spdm_handle_psk_exchange(void *ctx, void *req, void *rsp)
 	struct spdm_message *req_msg = (struct spdm_message *)req;
 	struct spdm_message *rsp_msg = (struct spdm_message *)rsp;
 	uint16_t req_id, p_len, r_len, o_len;
-	uint8_t hash[48];
+	uint8_t hash[SPDM_MAX_HASH_SIZE];
 	uint8_t slot_id;
 	int ret = -1;
 
