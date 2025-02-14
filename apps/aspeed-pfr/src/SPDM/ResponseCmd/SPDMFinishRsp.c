@@ -19,7 +19,7 @@ LOG_MODULE_DECLARE(spdm_rsp, CONFIG_LOG_DEFAULT_LEVEL);
 static int validate_finish_body(struct spdm_context *context, struct spdm_session_context *session, struct spdm_message *req_msg)
 {
 	int ret;
-	uint8_t hash[MBEDTLS_MD_MAX_SIZE] = {0};
+	uint8_t hash[SPDM_MAX_HASH_SIZE] = {0};
 	mbedtls_md_context_t *md_ctx = session->req_hmac;
 	uint8_t sig_offset = 0;
 	uint8_t key_id = req_msg->header.param2;
