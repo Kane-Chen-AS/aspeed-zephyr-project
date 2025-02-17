@@ -600,7 +600,7 @@ int mctp_i3c_attach_target_dev(uint8_t bus, uint64_t pid)
 
 	mrl.len = 0x45;
 	mrl.ibi_len = 2;
-	int ret = ret = i3c_ccc_do_setmrl(desc, &mrl);
+	i3c_ccc_do_setmrl(desc, &mrl);
 	if (mctp_i3c_inst->state == MCTP_I3C_TARGET_ATTACHED) {
 		LOG_WRN("I3C device is attached");
 		return 0;
