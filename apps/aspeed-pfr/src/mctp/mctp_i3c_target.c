@@ -83,7 +83,7 @@ static uint16_t mctp_i3c_tmq_write(void *mctp_p, void *msg_p)
 	int ret;
 	mctp *mctp_instance = (mctp *)mctp_p;
 	mctp_tx_msg *tx_msg = (mctp_tx_msg *)msg_p;
-	uint32_t len = tx_msg->len;
+	uint32_t len;
 	I3C_MSG i3c_msg;
 
 	if (mctp_p == NULL || msg_p == NULL)
@@ -95,6 +95,7 @@ static uint16_t mctp_i3c_tmq_write(void *mctp_p, void *msg_p)
 	if (!tx_msg->len)
 		return MCTP_ERROR;
 
+	len = tx_msg->len;
 	i3c_msg.bus = mctp_instance->medium_conf.i3c_conf.bus;
 	/** mctp package **/
 	memcpy(&i3c_msg.data[0], tx_msg->buf, len);
