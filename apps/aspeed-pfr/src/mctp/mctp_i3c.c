@@ -513,13 +513,16 @@ uint8_t mctp_i3c_eid_assignment_thread_create(mctp_i3c *mctp_i3c_inst)
 			mctp_i3c_state_handler,
 			mctp_i3c_inst, NULL, NULL, 5, 0, K_NO_WAIT);
 
-	snprintf(mctp_i3c_inst->i3c_state_task_name, sizeof(mctp_i3c_inst->i3c_state_task_name),
+	int status = snprintf(mctp_i3c_inst->i3c_state_task_name, sizeof(mctp_i3c_inst->i3c_state_task_name),
 			"MCTP I3C State Handler B%02xA%02x",
 			mctp_i3c_inst->mctp_inst->medium_conf.i3c_conf.bus,
 			mctp_i3c_inst->mctp_inst->medium_conf.i3c_conf.addr);
+	if (status < 0)
+		return MCTP_ERROR;
+
 	k_thread_name_set(mctp_i3c_inst->i3c_state_tid, mctp_i3c_inst->i3c_state_task_name);
 
-	return 0;
+	return MCTP_SUCCESS;
 }
 
 void mctp_i3c_state_expiry_fn(struct k_timer *tmr)
