@@ -223,10 +223,16 @@ int mctp_i3c_send_eid_announcement(mctp *mctp_instance, int *duration)
 	struct mctp_interface_wrapper *mctp_wrapper = &mctp_instance->mctp_wrapper;
 	struct mctp_interface *mctp_interface = &mctp_wrapper->mctp_interface;
 	struct device_manager *device_mgr = mctp_interface->device_manager;
-	uint8_t src_eid = device_manager_get_device_eid(device_mgr,
+	int src_eid = device_manager_get_device_eid(device_mgr,
 				DEVICE_MANAGER_SELF_DEVICE_NUM);
+
+	if (ROT_IS_ERROR(src_eid)) {
+		LOG_ERR("Failed to get self EID");
+		return status;
+	}
+
 	uint8_t req_buf[14] = {MCTP_BASE_PROTOCOL_MSG_TYPE_VENDOR_DEF, 0x80, 0x86, 0x80, 0x0a, 0x00,
-		0x00, 0x00, 0x00, MCTP_DOE_REGISTRATION_CMD, 0x00, 0x00, 0x01, src_eid};
+		0x00, 0x00, 0x00, MCTP_DOE_REGISTRATION_CMD, 0x00, 0x00, 0x01, (uint8_t)src_eid};
 
 	if (mctp_instance == mctp_i3c_bmc_inst.mctp_inst) {
 		dest_eid = MCTP_I3C_REGISTRATION_EID;
