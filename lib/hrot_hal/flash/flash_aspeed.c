@@ -422,7 +422,7 @@ int bmc_pch_get_flash_size(uint8_t device_id)
 	uint32_t address = 0;
 	int ret = get_flash_dev(device_id, &address, &flash_dev);
 	if (ret)
-		return ret;
+		return 0;
 
 	flash_sz = flash_get_flash_size(flash_dev);
 	return flash_sz;
@@ -435,7 +435,7 @@ int rot_get_region_size(uint8_t device_id)
 
 	ret = get_rot_region(device_id, &fa);
 	if (ret)
-		return ret;
+		return 0;
 
 	return fa->fa_size;
 }
