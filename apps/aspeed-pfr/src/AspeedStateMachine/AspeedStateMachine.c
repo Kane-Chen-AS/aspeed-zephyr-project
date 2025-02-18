@@ -1464,17 +1464,19 @@ int validate_afm_update_type(CPLD_STATUS *cpld_update_status, uint32_t *image_ty
 				sizeof(uint8_t), (uint8_t *)&hrot_svn);
 	if (status != Success) {
 		LOG_ERR("Flash read AFM SVN failed");
+		*image_type = 0xffffffff;
 		return Failure;
 	}
 	if (hrot_svn > SVN_MAX) {
-		LOG_ERR("invalid SVN");
+		LOG_ERR("Invalid SVN, hrot_svn = %x", hrot_svn);
 		*image_type = 0xffffffff;
+		LogUpdateFailure(UPD_CAPSULE_INVALID_SVN, 1);
 		return Failure;
 	}
 
 	current_svn = get_ufm_svn(SVN_POLICY_FOR_AFM);
 	if (hrot_svn > current_svn) {
-		if (evt_ctx->data.bit8[1] == AfmRecoveryUpdate) {
+		if (evt_ctx->data.bit8[1] & AfmRecoveryUpdate) {
 			AfmStatus = AFM_ACTIVE_PENDING_UPDATE|AFM_RECOVERY_PENDING_UPDATE;
 			LOG_WRN("go to T-1 stage for updating the AFM regions with incremented SVN");
 			cpld_update_status->Region[AFM_REGION].Recoveryregion = BMC_INTENT2_AFM_SVN_UPDATE;
@@ -1483,8 +1485,15 @@ int validate_afm_update_type(CPLD_STATUS *cpld_update_status, uint32_t *image_ty
 			LogLastPanic(BMC_UPDATE_INTENT);
 			LOG_ERR("the incremented SVN should be updated via recovery AFM update, to reject this request (%d, %d)", hrot_svn, current_svn);
 			*image_type = 0xffffffff;
+			LogUpdateFailure(UPD_CAPSULE_INVALID_SVN, 1);
 			return Failure;
 		}
+	} else if (hrot_svn < current_svn) {
+		LOG_ERR("Invalid SVN number, current=%d verify_svn=%d",
+				current_svn, hrot_svn);
+		*image_type = 0xffffffff;
+		LogUpdateFailure(UPD_CAPSULE_INVALID_SVN, 1);
+		return Failure;
 	}
 	return Success;
 }
@@ -1536,15 +1545,14 @@ void handle_update_requested(void *o)
 		if (evt_ctx->data.bit8[1] & AfmRecoveryUpdate) {
 			update_region |= AfmRecoveryUpdate;
 		}
-		break;
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 		if (evt_ctx->data.bit8[1] & CPLDUpdate) {
 			update_region |= CPLDUpdate;
 		}
-		break;
 #endif
 		pfr_manifest->update_intent2 = evt_ctx->data.bit8[1];
+		break;
 	default:
 		break;
 	}
@@ -1636,7 +1644,7 @@ void handle_update_requested(void *o)
 									&image_type,
 									evt_ctx_wrap.flash,
 									evt_ctx) != 0) {
-						update_region &= ~AfmActiveUpdate;
+						update_region &= ~AfmActiveAndRecoveryUpdate;
 						ret = Failure;
 						break;
 					}

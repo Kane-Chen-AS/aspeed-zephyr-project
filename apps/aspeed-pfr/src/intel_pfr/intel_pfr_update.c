@@ -42,7 +42,6 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 	int status = 0;
 	uint32_t read_address = 0;
 	uint32_t target_address = 0;
-	bool afm_update = false;
 	bool cpld_update = false;
 
 	if (manifest->image_type == BMC_TYPE) {
@@ -79,7 +78,6 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 			return Failure;
 
 		target_address = 0;
-		afm_update = true;
 	}
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
 	else if (manifest->image_type == AFM_TYPE) {
@@ -91,7 +89,6 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 			return Failure;
 
 		target_address = CONFIG_BMC_AFM_RECOVERY_OFFSET;
-		afm_update = true;
 	}
 #endif
 #endif
@@ -137,6 +134,13 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 	}
 
 	manifest->update_fw->pc_length = manifest->pc_length;
+	if ((manifest->pc_type == PFR_AFM) ||
+		(manifest->pc_type == PFR_AFM_PER_DEV) ||
+		(manifest->pc_type == PFR_AFM_ADD_TO_UPDATE)) {
+		LOG_INF("AFM doesn't have PFM, to ignore PFM validation");
+		manifest->image_type = AFM_TYPE;
+		return Success;
+	}
 
 	if (manifest->hash_curve == hash_sign_algo384 || manifest->hash_curve == hash_sign_algo256)
 		manifest->address += LMS_PFM_SIG_BLOCK_SIZE;
@@ -168,9 +172,7 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 	if (status == Success)
 		LOG_INF("Staging area verification successful");
 
-	if (afm_update)
-		manifest->image_type = AFM_TYPE;
-	else if (cpld_update)
+	if (cpld_update)
 		manifest->image_type = CPLD_TYPE;
 
 	return status;
@@ -416,14 +418,16 @@ int update_afm_image(struct pfr_manifest *manifest, uint32_t flash_select, void 
 	int status = 0;
 
 	LOG_INF("manifest->address=%08x", manifest->address);
-	status = manifest->base->verify((struct manifest *)manifest, manifest->hash,
-			manifest->verification->base, manifest->pfr_hash->hash_out,
-			manifest->pfr_hash->length);
+	// Change the image to AFM type for verifying the capsule in staging region
+	manifest->image_type = AFM_TYPE;
+	status = manifest->update_fw->base->verify((struct firmware_image *)manifest, NULL);
 	if (status != Success) {
 		LOG_ERR("AFM update capsule verification failed");
 		LogUpdateFailure(UPD_CAPSULE_AUTH_FAIL, 1);
 		return Failure;
 	}
+	// Change the image back to BMC type for reading the staging region in BMC side
+	manifest->image_type = BMC_TYPE;
 
 	pc_length = manifest->pc_length;
 	int offset = PFM_SIG_BLOCK_SIZE;
@@ -436,14 +440,7 @@ int update_afm_image(struct pfr_manifest *manifest, uint32_t flash_select, void 
 	status = pfr_spi_read(manifest->image_type, payload_address + offset + 4,
 				sizeof(uint8_t), (uint8_t *)&hrot_svn);
 	if (status != Success) {
-		LOG_ERR("Flash read AFM SVN failed");
-		return Failure;
-	}
-
-	status = svn_policy_verify(SVN_POLICY_FOR_AFM, hrot_svn);
-	if (status != Success) {
-		LOG_ERR("Verify AFM SVN failed");
-		LogUpdateFailure(UPD_CAPSULE_INVALID_SVN, 1);
+		LOG_ERR("Flash read AFM SVN failed, status = %d", status);
 		return Failure;
 	}
 

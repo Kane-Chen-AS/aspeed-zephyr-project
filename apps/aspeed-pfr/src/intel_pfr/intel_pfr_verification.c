@@ -240,11 +240,11 @@ int validate_pc_type(struct pfr_manifest *manifest)
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 #if (CONFIG_AFM_SPEC_VERSION == 4)
 	else if (manifest->pc_type == PFR_AFM)
-		return (manifest->update_intent2 & AfmActiveUpdate) ? Success : Failure;
+		return (manifest->update_intent2 & AfmActiveAndRecoveryUpdate) ? Success : Failure;
 	else if (manifest->pc_type == PFR_AFM_PER_DEV)
-		return (manifest->update_intent2 & AfmRecoveryUpdate) ? Success : Failure;
+		return (manifest->update_intent2 & AfmActiveAndRecoveryUpdate) ? Success : Failure;
 	else if (manifest->pc_type == PFR_AFM_ADD_TO_UPDATE)
-		return (manifest->update_intent2 & AfmActiveAddToUpdate) ? Success : Failure;
+		return (manifest->update_intent2 & AfmActiveAndRecoveryUpdate) ? Success : Failure;
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
 	else if (manifest->pc_type == PFR_AFM)
 		return (manifest->update_intent2 & AfmActiveAndRecoveryUpdate) ? Success : Failure;
