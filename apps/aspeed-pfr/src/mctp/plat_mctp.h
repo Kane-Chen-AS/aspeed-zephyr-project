@@ -14,7 +14,12 @@
 #else
 #define I2C_BUS_BMC 0x00
 #endif
+
+#if defined(CONFIG_BOARD_AST2700_DCSCM)
+#define I2C_BUS_PCH 0x05
+#else
 #define I2C_BUS_PCH 0x02
+#endif
 
 typedef struct _mctp_smbus_port {
 	mctp *mctp_inst;
