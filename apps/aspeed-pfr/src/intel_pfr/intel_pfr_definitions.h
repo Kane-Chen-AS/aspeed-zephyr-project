@@ -109,12 +109,13 @@
 #define CPU0_AFM_BODY_OFFSET            0x0
 #define CPU1_AFM_BODY_OFFSET            0x2000
 #define BMC_AFM_BODY_OFFSET             0x4000
-#define AFM_BODY_SIZE                   0x2000
 
 #if (CONFIG_AFM_SPEC_VERSION == 4)
 #define MEASUREMENT_PAYLOAD_SIZE 8
+#define AFM_BODY_SIZE                   0x2000
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
 #define MEASUREMENT_PAYLOAD_SIZE 4
+#define AFM_BODY_SIZE                   0x1000
 #endif
 
 typedef enum {
