@@ -117,7 +117,7 @@ int spdm_handle_finish(void *ctx, void *req, void *rsp, uint32_t *session_id)
 		session = spdm_session_get(*session_id);
 
 	if (session == NULL) {
-		LOG_ERR("Failed to find session context (%x)", *session_id);
+		LOG_ERR("Failed to find session context (%x)", (session_id)?*session_id:0xffffffff);
 		goto cleanup;
 	}
 
