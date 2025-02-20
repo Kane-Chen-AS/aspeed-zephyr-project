@@ -552,6 +552,8 @@ int verify_and_update_cpld_images(struct pfr_manifest *manifest, uint32_t flash_
 	ARG_UNUSED(AoData);
 	uint32_t read_addr = manifest->address;
 	uint32_t region_size;
+	int status;
+	uint32_t image_size;
 
 	if (manifest->pfr_authentication->online_update_cap_verify(manifest)) {
 		LOG_ERR("Verify BMC's CPLD staging region failed");
@@ -559,6 +561,18 @@ int verify_and_update_cpld_images(struct pfr_manifest *manifest, uint32_t flash_
 	}
 
 	region_size = pfr_spi_get_device_size(ROT_EXT_CPLD_ACT);
+	status = pfr_spi_read(manifest->image_type, manifest->address + sizeof(uint32_t),
+			sizeof(image_size), (uint8_t *)&image_size);
+	if (status != Success) {
+		LOG_ERR("Failed to read image size");
+		return Failure;
+	}
+	if ((image_size + PFM_SIG_BLOCK_SIZE) > region_size) {
+		LOG_ERR("Image size %x is bigger than CPLD active region %x",
+				image_size + PFM_SIG_BLOCK_SIZE, region_size);
+		return Failure;
+	}
+
 	if (pfr_spi_erase_region(ROT_EXT_CPLD_ACT, true, 0, region_size)) {
 		LOG_ERR("Erase CPLD active region failed");
 		return Failure;
