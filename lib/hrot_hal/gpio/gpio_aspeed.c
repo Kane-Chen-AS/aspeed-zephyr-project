@@ -23,6 +23,9 @@
 
 #if DT_NODE_HAS_STATUS(DT_INST(0, aspeed_pfr_gpio_bhs), okay)
 #define INTEL_BHS
+#if defined(CONFIG_BOARD_AST1060_PROT)
+#define INTEL_PROT
+#endif
 #endif
 
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
@@ -35,16 +38,16 @@ void RSTPlatformReset(bool assert);
 static void bmc_srst_enable_ctrl(bool enable)
 {
 	int ret;
-	const struct gpio_dt_spec gpio_m5 =
+	const struct gpio_dt_spec srst_gpio =
 		GPIO_DT_SPEC_GET_BY_IDX(DT_INST(0, aspeed_pfr_gpio_common),
 						bmc_srst_ctrl_out_gpios, 0);
 
 	if (enable)
-		gpio_pin_set(gpio_m5.port, gpio_m5.pin, 0);
+		gpio_pin_set(srst_gpio.port, srst_gpio.pin, 0);
 	else
-		gpio_pin_set(gpio_m5.port, gpio_m5.pin, 1);
+		gpio_pin_set(srst_gpio.port, srst_gpio.pin, 1);
 
-	ret = gpio_pin_configure_dt(&gpio_m5, GPIO_OUTPUT);
+	ret = gpio_pin_configure_dt(&srst_gpio, GPIO_OUTPUT);
 	if (ret)
 		return;
 
@@ -54,16 +57,16 @@ static void bmc_srst_enable_ctrl(bool enable)
 static void bmc_extrst_enable_ctrl(bool enable)
 {
 	int ret;
-	const struct gpio_dt_spec gpio_h2 =
+	const struct gpio_dt_spec extrst_gpio =
 		GPIO_DT_SPEC_GET_BY_IDX(DT_INST(0, aspeed_pfr_gpio_common),
 						bmc_extrst_ctrl_out_gpios, 0);
 
 	if (enable)
-		gpio_pin_set(gpio_h2.port, gpio_h2.pin, 0);
+		gpio_pin_set(extrst_gpio.port, extrst_gpio.pin, 0);
 	else
-		gpio_pin_set(gpio_h2.port, gpio_h2.pin, 1);
+		gpio_pin_set(extrst_gpio.port, extrst_gpio.pin, 1);
 
-	ret = gpio_pin_configure_dt(&gpio_h2, GPIO_OUTPUT);
+	ret = gpio_pin_configure_dt(&extrst_gpio, GPIO_OUTPUT);
 	if (ret)
 		return;
 
@@ -72,24 +75,24 @@ static void bmc_extrst_enable_ctrl(bool enable)
 
 static void pch_rst_enable_ctrl(bool enable)
 {
+#if defined(INTEL_PROT) || !defined(INTEL_BHS)
 	int ret;
-	const struct gpio_dt_spec gpio_m2 =
+	const struct gpio_dt_spec rst_gpio =
 		GPIO_DT_SPEC_GET_BY_IDX(DT_INST(0, aspeed_pfr_gpio_common),
 						pch_rst_ctrl_out_gpios, 0);
 
 	if (enable) {
-		gpio_pin_set(gpio_m2.port, gpio_m2.pin, 0);
-		LOG_INF("[PFR->CPLD] AUX_PWRGD De-assert[%s %d]", gpio_m2.port->name, gpio_m2.pin);
+		gpio_pin_set(rst_gpio.port, rst_gpio.pin, 0);
 	} else {
-		gpio_pin_set(gpio_m2.port, gpio_m2.pin, 1);
-		LOG_INF("[PFR->CPLD] AUX_PWRGD Assert[%s %d]", gpio_m2.port->name, gpio_m2.pin);
+		gpio_pin_set(rst_gpio.port, rst_gpio.pin, 1);
 	}
 
-	ret = gpio_pin_configure_dt(&gpio_m2, GPIO_OUTPUT);
+	ret = gpio_pin_configure_dt(&rst_gpio, GPIO_OUTPUT);
 	if (ret)
 		return;
 
 	k_busy_wait(10000); /* 10ms */
+#endif
 }
 
 int BMCBootHold(void)
@@ -140,9 +143,7 @@ int PCHBootHold(void)
 	// RTCRSTControl(true);
 	AUXPowerGoodControl(false);
 	/* Hold PCH Reset */
-#ifndef INTEL_BHS
 	pch_rst_enable_ctrl(true);
-#endif
 
 	dev_m = device_get_binding(PCH_SPI_MONITOR);
 	/* config spi monitor as master mode */
@@ -151,7 +152,7 @@ int PCHBootHold(void)
 	if (flash_dev) {
 		spi_nor_rst_by_cmd(flash_dev);
 	} else {
-		LOG_ERR("Failed to bind spi2_cs0");
+		LOG_ERR("Failed to bind spi2@0");
 	}
 
 #if defined(CONFIG_CPU_DUAL_FLASH)
@@ -189,7 +190,7 @@ int BMCBootRelease(void)
 	if (flash_dev) {
 		spi_nor_rst_by_cmd(flash_dev);
 	} else {
-		LOG_ERR("Failed to bind spi1_cs1");
+		LOG_ERR("Failed to bind spi1@1");
 	}
 	dev_m = device_get_binding(BMC_SPI_MONITOR_2);
 	aspeed_spi_monitor_sw_rst(dev_m);
@@ -216,7 +217,7 @@ int PCHBootRelease(void)
 	if (flash_dev) {
 		spi_nor_rst_by_cmd(flash_dev);
 	} else {
-		LOG_ERR("Failed to bind spi2_cs0");
+		LOG_ERR("Failed to bind spi2@0");
 	}
 	dev_m = device_get_binding(PCH_SPI_MONITOR);
 	aspeed_spi_monitor_sw_rst(dev_m);
@@ -228,7 +229,7 @@ int PCHBootRelease(void)
 	if (flash_dev) {
 		spi_nor_rst_by_cmd(flash_dev);
 	} else {
-		LOG_ERR("Failed to bind spi2_cs1");
+		LOG_ERR("Failed to bind spi2@1");
 	}
 	dev_m = device_get_binding(PCH_SPI_MONITOR_2);
 	aspeed_spi_monitor_sw_rst(dev_m);
@@ -239,7 +240,7 @@ int PCHBootRelease(void)
 	// RTCRSTControl(false);
 	AUXPowerGoodControl(true);
 
-	// pch_rst_enable_ctrl(false);
+	pch_rst_enable_ctrl(false);
 	LOG_INF("release PCH");
 	return 0;
 }

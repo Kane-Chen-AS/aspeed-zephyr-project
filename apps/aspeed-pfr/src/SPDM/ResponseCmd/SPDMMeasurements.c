@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: MIT
  */
-#include <zephyr/random/rand32.h>
+#include <zephyr/random/random.h>
 
 #include "SPDM/SPDMCommon.h"
 
@@ -34,6 +34,7 @@ int spdm_handle_get_measurements(void *ctx, void *req, void *rsp)
 	rsp_msg->header.param2 = 0;
 	if (req_measurement == 0) {
 		uint8_t measurement_count;
+
 		context->get_measurement(context, req_measurement, &measurement_count, NULL, NULL);
 		rsp_msg->header.param1 = measurement_count; // Total number of measurements
 
@@ -117,28 +118,29 @@ int spdm_handle_get_measurements(void *ctx, void *req, void *rsp)
 		 * Entire first GET_MEASUREMENTS request message under consideration, where the Requester has
 		 * requested a signature on that specific GET_MEASUREMENTS request.
 		 */
-		uint8_t hash[MBEDTLS_MD_MAX_SIZE];
+		uint8_t hash[SPDM_MAX_HASH_SIZE];
+		size_t hash_length = spdm_context_base_hash_size(context);
 
 		mbedtls_sha512_finish(&context->l1l2_context, hash);
 		LOG_HEXDUMP_DBG(hash, 48, "L1L2 Hash");
 		LOG_HEXDUMP_DBG(context->message_a.data, context->message_a.write_ptr, "message_a");
 
 		spdm_context_reset_l1l2_hash(context);
-		if (req_msg->header.spdm_version == SPDM_VERSION_12) {
+		if (req_msg->header.spdm_version == SPDM_VERSION_12)
 			spdm_context_update_l1l2_hash_buffer(context, &context->message_a);
-		}
 
 		/* Sign the message */
 		uint8_t sig[MBEDTLS_ECDSA_MAX_LEN];
 		size_t sig_len = 0;
-		ret = spdm_crypto_sign(context, hash, sizeof(hash), sig, &sig_len,
+
+		ret = spdm_crypto_sign(context, hash, hash_length, sig, &sig_len,
 				req_msg->header.spdm_version == SPDM_VERSION_12,
 				SPDM_SIGN_CONTEXT_L1L2_RSP, strlen(SPDM_SIGN_CONTEXT_L1L2_RSP));
 
 		if (ret == 0) {
 			spdm_buffer_resize(&rsp_msg->buffer, rsp_msg->buffer.write_ptr + sig_len);
 			spdm_buffer_append_array(&rsp_msg->buffer, sig, sig_len);
-			LOG_HEXDUMP_INF(sig, sig_len, "Signature");
+			SPDM_DBG_HEXDUMP(sig, sig_len, "Signature");
 		} else {
 			LOG_ERR("GET_MEASUREMENTS Failed to sign message");
 			rsp_msg->header.request_response_code = SPDM_RSP_ERROR;

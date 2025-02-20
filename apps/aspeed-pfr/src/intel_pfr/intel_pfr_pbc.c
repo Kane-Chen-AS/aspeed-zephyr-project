@@ -275,7 +275,6 @@ int get_total_pfm_size(struct pfr_manifest *manifest, uint32_t signed_pfm_offset
 #endif
 	uint32_t image_type = manifest->image_type;
 	uint32_t cap_pfm_body_offset = cap_pfm_body_start_addr;
-	LOG_INF("To read %x from image %d", cap_pfm_body_offset, image_type);
 
 	while (cap_pfm_body_offset < cap_pfm_body_end_addr) {
 		pfr_spi_read(image_type, cap_pfm_body_offset, sizeof(PFM_SPI_DEFINITION),
@@ -347,7 +346,7 @@ int get_total_pfm_size(struct pfr_manifest *manifest, uint32_t signed_pfm_offset
 				(uint8_t *)&signed_afm);
 		total_pfm_size = afm_start_addr_in_pfm + afm_data_length - PFM_SIG_BLOCK_SIZE;
 		if (signed_afm.Block0Tag == BLOCK0TAG) {
-			LOG_INF("has AFM device data");
+			LOG_INF("PFM has AFM device data");
 			/* has AFM device data */
 			total_pfm_size += AFM_BODY_SIZE;
 		}
@@ -473,15 +472,23 @@ int decompress_fv_capsule(struct pfr_manifest *manifest)
 #if (CONFIG_AFM_SPEC_VERSION == 4)
 #include <pfr/pfr_ufm.h>
 int decompress_afm_capsule(struct pfr_manifest *pfr_manifest,
-		AFM_ADDRESS_DEFINITION_v40 *afm_def) {
+		AFM_ADDRESS_DEFINITION_v40 *afm_def)
+{
 	int status;
-	uint32_t reaad_address;
+	uint32_t read_address;
 	uint32_t afm_start_addr = afm_def->AfmAddress;
 	uint32_t afm_start_addr_in_pfm =
 		afm_start_addr - pfr_manifest->active_pfm_addr;
 	uint32_t org_address;
 	PFR_AUTHENTICATION_BLOCK0 block0;
 	uint32_t offset = PFM_SIG_BLOCK_SIZE;
+	uint32_t afm_body_offset;
+	bool afm_device_found = false;
+
+	if (pfr_manifest->image_type == BMC_TYPE)
+		afm_body_offset = BMC_AFM_BODY_OFFSET;
+	else
+		afm_body_offset = CPU0_AFM_BODY_OFFSET;
 
 	if (pfr_manifest->hash_curve == hash_sign_algo384 ||
 		pfr_manifest->hash_curve == hash_sign_algo256) {
@@ -489,27 +496,27 @@ int decompress_afm_capsule(struct pfr_manifest *pfr_manifest,
 	}
 
 	if (pfr_manifest->state == FIRMWARE_RECOVERY)
-		reaad_address = pfr_manifest->recovery_address + offset;
+		read_address = pfr_manifest->recovery_address + offset;
 	else
-		reaad_address = pfr_manifest->staging_address + offset;;
+		read_address = pfr_manifest->staging_address + offset;
 
-	afm_start_addr_in_pfm += reaad_address;
+	afm_start_addr_in_pfm += read_address;
 	pfr_spi_read(pfr_manifest->image_type, afm_start_addr_in_pfm, sizeof(PFR_AUTHENTICATION_BLOCK0),
 			(uint8_t *)&block0);
 
 	if (block0.Block0Tag == BLOCK0TAG) {
 		/* AFM address definition is found, to find AFM device info is presented or not */
-		pfr_spi_read(pfr_manifest->image_type, afm_start_addr_in_pfm + block0.PcLength + offset, sizeof(PFR_AUTHENTICATION_BLOCK0),
-			(uint8_t *)&block0);
+		pfr_spi_read(pfr_manifest->image_type, afm_start_addr_in_pfm + block0.PcLength + offset,
+				sizeof(PFR_AUTHENTICATION_BLOCK0), (uint8_t *)&block0);
 		if (block0.Block0Tag != BLOCK0TAG) {
-			LOG_WRN("%s : afm device info, Tag = %x, len = %x", __FUNCTION__, block0.Block0Tag, block0.PcLength);
-			LOG_WRN("there is no AFM device info, to ignore AFM device decompression");
-			return Success;
+			// this operation is added for PCH image
+			LOG_INF("No AFM device info, copy AFM address info instead");
+		} else {
+			// move to afm device offset
+			afm_start_addr_in_pfm += (block0.PcLength + offset);
+			afm_device_found = true;
 		}
-		// move to afm device offset
-		afm_start_addr_in_pfm += (block0.PcLength + offset);
-	}
-	else {
+	} else {
 		/* the image should carry AFM address defintion because afm_def is presented */
 		LOG_ERR("%s : image(%d), afm_start_addr_in_pfm = %x, afm_start_addr = %x, Tag = %x, len = %x",
 			__FUNCTION__, pfr_manifest->image_type, afm_start_addr_in_pfm, afm_start_addr, block0.Block0Tag, block0.PcLength);
@@ -529,7 +536,7 @@ int decompress_afm_capsule(struct pfr_manifest *pfr_manifest,
 		return -1;
 	}
 
-	LOG_INF("to copy AFM device data from image (%d,%x) to image (%d, %x)", pfr_manifest->image_type,
+	LOG_INF("Copy AFM device data from image (%d,%x) to image (%d, %x)", pfr_manifest->image_type,
 			afm_start_addr_in_pfm, pfr_manifest->image_type, afm_start_addr);
 	pfr_spi_erase_region(pfr_manifest->image_type, true, afm_start_addr, AFM_BODY_SIZE);
 	if (pfr_spi_region_read_write_between_spi(pfr_manifest->image_type, afm_start_addr_in_pfm,
@@ -538,6 +545,27 @@ int decompress_afm_capsule(struct pfr_manifest *pfr_manifest,
 		return Failure;
 	}
 
+	if (afm_device_found) {
+		LOG_INF("Update new AFM data to internal AFM (%x)", afm_body_offset);
+		if (pfr_spi_erase_region(ROT_INTERNAL_AFM, true, afm_body_offset, AFM_BODY_SIZE)) {
+			LOG_ERR("Failed to erase AFM body Partition (%x)", afm_body_offset);
+			return Failure;
+		}
+		if (pfr_spi_region_read_write_between_spi(pfr_manifest->image_type,
+			afm_start_addr_in_pfm, ROT_INTERNAL_AFM,
+			afm_body_offset, AFM_BODY_SIZE)) {
+			LOG_ERR("Failed to write AFM body Partition (%x)", afm_body_offset);
+			return Failure;
+		}
+		set_afm_address(pfr_manifest, afm_start_addr_in_pfm);
+	} else {
+		/*
+		 * New FW don't carry AFM in PFM, to remove internal AFM for
+		 * syncing new FW.
+		 */
+		erase_afm_body(afm_body_offset);
+		set_afm_address(pfr_manifest, 0);
+	}
 	return 0;
 }
 #endif
@@ -657,6 +685,7 @@ int decompress_capsule(struct pfr_manifest *manifest, DECOMPRESSION_TYPE_MASK_EN
 #if (CONFIG_AFM_SPEC_VERSION == 4)
 		else if (spi_def.PFMDefinitionType == AFM_ADDR_DEF) {
 			AFM_ADDRESS_DEFINITION_v40 afm_def;
+
 			pfr_spi_read(image_type, cap_pfm_body_offset, sizeof(AFM_ADDRESS_DEFINITION_v40),
 					(uint8_t *)&afm_def);
 			cap_pfm_body_offset += sizeof(AFM_ADDRESS_DEFINITION_v40);
@@ -664,9 +693,8 @@ int decompress_capsule(struct pfr_manifest *manifest, DECOMPRESSION_TYPE_MASK_EN
 				return Failure;
 		}
 #endif
-		else {
+		else
 			break;
-		}
 	}
 
 	if (decomp_type & DECOMPRESSION_STATIC_REGIONS_MASK) {

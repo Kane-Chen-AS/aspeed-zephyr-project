@@ -1,5 +1,7 @@
 #include "ast1060_dcscm_gpio_common.dts"
-#include "ast1060_dcscm_gpio_egs.dts"
+#include "ast1060_dcscm_gpio_bhs.dts"
+
+#define AFM_VERSION 4
 
 &i2cfilter {
 	status = "okay";
@@ -53,25 +55,90 @@
 	status = "okay";
 };
 
-#if 0
+#if 1
+&i3c0 {
+	status = "okay";
+	sda-tx-hold-ns = <20>;
+	i3c-pp-scl-hi-period-ns = <380>;
+	i3c-pp-scl-lo-period-ns = <620>;
+	pinctrl-0 = <pinctrl_i3c0_default>;
+
+	// i3chub
+	i3cdev@4cdffffffff {
+		compatible = "i3c-dummy-device";
+		reg = <0x0 0x4cd 0xffffffff>;
+		status = "okay";
+	};
+
+	// cpu0
+	i3cdev@20a0000000f {
+		compatible = "i3c-dummy-device";
+		reg = <0x0 0x20a 0x0000000f>;
+		status = "okay";
+	};
+
+	// cpu1
+	i3cdev@20a0000100f {
+		compatible = "i3c-dummy-device";
+		reg = <0x0 0x20a 0x0000100f>;
+		status = "okay";
+	};
+};
+
 // For mctp over i3c
 // AST2600 i3c-1 -> AST1060 i3c-2
 &i3c2 {
 	status = "okay";
-	assigned-address = <0x9>;
-	pid-extra-info = <0x9>;
-	ibi-append-pec;
-	priv-xfer-pec;
+	sda-tx-hold-ns = <20>;
+	i3c-pp-scl-hi-period-ns = <250>;
+	i3c-pp-scl-lo-period-ns = <250>;
+
+	pinctrl-0 = <pinctrl_i3c2_default>;
+
+	i3cdev@7ec05031000 {
+		compatible = "i3c-dummy-device";
+		reg = <0x0 0x7ec 0x05031000>;
+		status = "okay";
+	};
+};
+#else
+// For testing PFR 5.0 it requires following modification on dcscm card:
+// - TP313 connected to R187
+// - TP314 connected to R188
+// AST1060 i3c0 -> AST2600 i3c0 (LV)
+// AST1060 i3c2 -> AST2600 i3c1 (LV)
+&i3c0 {
+	status = "okay";
+	dcr = <0xcc>;
 	secondary;
-	i3c2_smq:i3c-slave-mqueue@9 {
-		 compatible = "aspeed,i3c-slave-mqueue";
-		 reg = <0x9>;
-		 msg-size = <256>;
-		 num-of-msgs = <4>;
-		 mandatory-data-byte = <0xae>;
-		 label = "I3C_SMQ_2";
-		 status = "okay";
-	 };
+
+	pinctrl-0 = < pinctrl_i3c0_default >;
+
+	i3c0_tmq:i3c-tmq@7eca0030000 {
+		compatible = "i3c-target-mqueue";
+		reg = <0x0 0x7ec 0xa0030000>;
+		msg-size = <128>;
+		num-of-msgs = <8>;
+		mandatory-data-byte = <0xae>;
+		status = "okay";
+	};
+};
+
+&i3c2 {
+	status = "okay";
+	dcr = <0xcc>;
+	secondary;
+
+	pinctrl-0 = < pinctrl_i3c2_default >;
+
+	i3c2_tmq:i3c-tmq@7eca0032000 {
+		compatible = "i3c-target-mqueue";
+		reg = <0x0 0x7ec 0xa0032000>;
+		msg-size = <128>;
+		num-of-msgs = <8>;
+		mandatory-data-byte = <0xae>;
+		status = "okay";
+	};
 };
 #endif
 
@@ -160,27 +227,44 @@
 		compatible = "fixed-partitions";
 		#address-cells = <1>;
 		#size-cells = <1>;
-
-#if 0
+#if (AFM_VERSION == 4)
 		/* Reserved for Intel-PFR 4.0 */
-		afm_act_1_partition: partition@0 {
+		afm_act1_partition: partition@0 {
 			label = "afm_active_1";
-			reg = <0x0 0x80000>;
+			reg = <0x0 0x20000>;
 		};
 
-		afm_act_2_partition: partition@80000 {
+		afm_act2_partition: partition@20000 {
 			label = "afm_active_2";
-		}
-			reg = <0x80000 0x80000>;
-
-		afm_rcv_1_partition: partition@100000 {
-			label = "afm_recovery_1";
-			reg = <0x100000 0x80000>;
+			reg = <0x20000 0x20000>;
 		};
 
-		afm_rcv_2_partition: partition@180000 {
+		afm_rcv1_partition: partition@40000 {
+			label = "afm_recovery_1";
+			reg = <0x40000 0x20000>;
+		};
+
+		afm_rcv2_partition: partition@60000 {
 			label = "afm_recovery_2";
-			reg = <0x180000 0x80000>;
+			reg = <0x60000 0x20000>;
+		};
+
+		intel_cpld_act_partition: partition@80000 {
+			label = "intel_cpld_act";
+			reg = <0x80000 0x1C0000>;
+		};
+		intel_cpld_rc_partition: partition@240000 {
+			label = "intel_cpld_rc";
+			reg = <0x240000 0x1C0000>;
+		};
+#elif (AFM_VERSION == 3)
+		intel_cpld_act_partition: partition@0 {
+			label = "intel_cpld_act";
+			reg = <0x000000 0x200000>;
+		};
+		intel_cpld_rc_partition: partition@200000 {
+			label = "intel_cpld_rc";
+			reg = <0x200000 0x200000>;
 		};
 #endif
 	};
@@ -292,6 +376,14 @@
 	};
 };
 
-&uart5 {
+&hace {
+	status = "okay";
+};
+
+&rsa {
+	status = "okay";
+};
+
+&ecdsa {
 	status = "okay";
 };

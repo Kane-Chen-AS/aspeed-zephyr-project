@@ -35,6 +35,7 @@ void apply_pfm_protection(int spi_dev)
 	uint32_t rw_region_addr;
 	int region_length;
 	int spi_id = spi_dev;
+	int ret;
 
 #if defined(CONFIG_BMC_DUAL_FLASH) || defined(CONFIG_CPU_DUAL_FLASH)
 	int flash_size;
@@ -53,7 +54,35 @@ void apply_pfm_protection(int spi_dev)
 		LOG_ERR("Failed to get read write regions");
 		return;
 	}
-
+	ret = Set_SPI_Filter_RW_Region(spim_devs[spi_id],
+			SPI_FILTER_WRITE_PRIV, SPI_FILTER_PRIV_DISABLE,
+			0, pfr_spi_get_device_size(spi_id));
+	if (ret) {
+		LOG_ERR("Failed to init %s, ret = %d", spim_devs[spi_id], ret);
+		return;
+	}
+#if defined(CONFIG_BMC_DUAL_FLASH)
+	if (spi_dev == BMC_SPI) {
+		ret = Set_SPI_Filter_RW_Region(spim_devs[BMC_SPI_2],
+				SPI_FILTER_WRITE_PRIV, SPI_FILTER_PRIV_DISABLE,
+				0, pfr_spi_get_device_size(BMC_SPI_2));
+		if (ret) {
+			LOG_ERR("Failed to init %s, ret = %d", spim_devs[BMC_SPI_2], ret);
+			return;
+		}
+	}
+#endif
+#if defined(CONFIG_CPU_DUAL_FLASH)
+	if (spi_dev == PCH_SPI) {
+		ret = Set_SPI_Filter_RW_Region(spim_devs[PCH_SPI_2],
+				SPI_FILTER_WRITE_PRIV, SPI_FILTER_PRIV_DISABLE,
+				0, pfr_spi_get_device_size(PCH_SPI_2));
+		if (ret) {
+			LOG_ERR("Failed to init %s, ret = %d", spim_devs[PCH_SPI_2], ret);
+			return;
+		}
+	}
+#endif
 	struct pfm_fw_version_element_rw_region rw_region;
 	for (int i = 0; i < fw_ver_element.rw_count; i++) {
 		if (pfr_spi_read(spi_dev, rw_region_addr, sizeof(rw_region), (uint8_t *)&rw_region)) {

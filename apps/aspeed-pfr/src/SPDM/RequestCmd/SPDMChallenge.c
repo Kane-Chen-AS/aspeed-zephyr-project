@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: MIT
  */
-#include <zephyr/random/rand32.h>
+#include <zephyr/random/random.h>
 #include <stdlib.h>
 
 #include "SPDM/SPDMCommon.h"
@@ -49,7 +49,7 @@ int spdm_challenge(void *ctx, uint8_t slot_id, uint8_t measurements)
 		goto cleanup;
 	}
 
-	/* Verify the CHALLENGE_AUTH result 
+	/* Verify the CHALLENGE_AUTH result
 	 * Off         Len    Name
 	 *    0,         H    CertChainHash
 	 *    H,        32    Nonce

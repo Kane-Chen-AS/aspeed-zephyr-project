@@ -46,9 +46,9 @@
             "index": 4,
             "offset": "0x64000",
             "size": "0x770000",
-            "prot_mask": 29,
+            "prot_mask": 31,
             "pfm": 1,
-            "hash": 1,
+            "hash": 0,
             "compress": 1
         },
         {

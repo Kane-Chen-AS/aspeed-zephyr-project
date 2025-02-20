@@ -32,3 +32,14 @@
 	spi-max-frequency = <50000000>;
 };
 
+&hace {
+	status = "okay";
+};
+
+&rsa {
+	status = "okay";
+};
+
+&ecdsa {
+	status = "okay";
+};

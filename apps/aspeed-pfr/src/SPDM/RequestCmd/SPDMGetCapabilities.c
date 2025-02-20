@@ -7,7 +7,7 @@
 
 LOG_MODULE_DECLARE(spdm_req, CONFIG_LOG_DEFAULT_LEVEL);
 
-int spdm_get_capabilities(void *ctx) 
+int spdm_get_capabilities(void *ctx)
 {
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	struct spdm_message req_msg, rsp_msg;
@@ -42,7 +42,7 @@ int spdm_get_capabilities(void *ctx)
 		LOG_ERR("GET_CAPABILITIES failed %x", ret);
 		ret = -1;
 		goto cleanup;
-	} else if ((rsp_msg.header.spdm_version != req_msg.header.spdm_version)) {
+	} else if (rsp_msg.header.spdm_version != req_msg.header.spdm_version) {
 		LOG_ERR("Unmatched header SPDM_VERSION Req %02x Rsp %02x",
 				req_msg.header.spdm_version,
 				rsp_msg.header.spdm_version);

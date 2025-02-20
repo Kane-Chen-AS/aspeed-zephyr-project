@@ -44,10 +44,10 @@ int spdm_get_digests(void *ctx)
 	context->remote.certificate.slot_mask = 0;
 	uint8_t slot_mask = rsp_msg.header.param2;
 	uint8_t count = 0;
+
 	for (uint8_t mask = 0x01; mask; mask <<= 1) {
-		if (mask & slot_mask) {
+		if (mask & slot_mask)
 			++count;
-		}
 	}
 
 	if (rsp_msg.buffer.write_ptr != count*48) {
@@ -61,8 +61,8 @@ int spdm_get_digests(void *ctx)
 	context->remote.certificate.slot_mask = slot_mask;
 	for (uint8_t slot_id = 0x00; slot_id < 8; ++slot_id) {
 		if (slot_mask & (1<<slot_id)) {
-			spdm_buffer_get_array(&rsp_msg.buffer, 
-					context->remote.certificate.certs[slot_id].digest, 48);
+			spdm_buffer_get_array(&rsp_msg.buffer,
+				context->remote.certificate.certs[slot_id].digest, 48);
 		}
 	}
 	ret = 0;

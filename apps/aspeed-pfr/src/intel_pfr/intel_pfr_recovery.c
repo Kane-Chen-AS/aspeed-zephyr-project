@@ -89,7 +89,10 @@ int does_staged_fw_image_match_active_fw_image(struct pfr_manifest *manifest)
 #if (CONFIG_AFM_SPEC_VERSION == 4)
 	else if (manifest->image_type == AFM_TYPE) {
 		manifest->image_type = BMC_TYPE;
-		staging_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET, (uint8_t *)&staging_address,
+					sizeof(staging_address)))
+			return Failure;
+
 		/* Fixed partition so starts from zero */
 		act_pfm_image_type = ROT_EXT_AFM_ACT_1;
 		act_pfm_offset = 0;
@@ -97,7 +100,10 @@ int does_staged_fw_image_match_active_fw_image(struct pfr_manifest *manifest)
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
 	else if (manifest->image_type == AFM_TYPE) {
 		manifest->image_type = BMC_TYPE;
-		staging_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET, (uint8_t *)&staging_address,
+					sizeof(staging_address)))
+			return Failure;
+
 		/* Fixed partition so starts from zero */
 		act_pfm_image_type = ROT_INTERNAL_AFM;
 		act_pfm_offset = 0;
@@ -335,13 +341,12 @@ int pfr_recover_active_region(struct pfr_manifest *manifest)
 
 int pfr_staging_pch_staging(struct pfr_manifest *manifest)
 {
-
 	int status;
-
 	uint32_t source_address;
 	uint32_t target_address;
 	uint32_t pc_type;
 	uint32_t image_type = manifest->image_type;
+	uint32_t image_size;
 
 	status = ufm_read(PROVISION_UFM, BMC_STAGING_REGION_OFFSET, (uint8_t *)&source_address,
 			sizeof(source_address));
@@ -357,12 +362,23 @@ int pfr_staging_pch_staging(struct pfr_manifest *manifest)
 	manifest->address = source_address;
 
 	LOG_INF("BMC's PCH Staging Area verification");
-	LOG_INF("Veriifying capsule signature, address=0x%08x", manifest->address);
+	LOG_INF("Verifying capsule signature, address=0x%08x", manifest->address);
 	// manifest verification
 	status = pfr_spi_read(manifest->image_type, manifest->address + (2 * sizeof(pc_type)),
 			sizeof(pc_type), (uint8_t *)&pc_type);
 	if (pc_type != PFR_PCH_UPDATE_CAPSULE && pc_type != PFR_PCH_SEAMLESS_UPDATE_CAPSULE) {
 		LOG_ERR("Invalid pc_type : %x", pc_type);
+		return Failure;
+	}
+	status = pfr_spi_read(manifest->image_type, manifest->address + sizeof(pc_type),
+			sizeof(image_size), (uint8_t *)&image_size);
+	if (status != Success) {
+		LOG_ERR("Failed to read image size");
+		return Failure;
+	}
+	if ((image_size + PFM_SIG_BLOCK_SIZE) > CONFIG_PCH_STAGING_SIZE) {
+		LOG_ERR("Image size %x is bigger than staging size %x",
+				image_size + PFM_SIG_BLOCK_SIZE, CONFIG_PCH_STAGING_SIZE);
 		return Failure;
 	}
 
@@ -404,6 +420,45 @@ int pfr_staging_pch_staging(struct pfr_manifest *manifest)
 
 	return Success;
 }
+
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+#include "intel_pfr_pfm_manifest.h"
+int recover_internal_afm(uint32_t image_type, uint32_t pfm_afm_addr, uint32_t internal_afm_addr)
+{
+	if (pfm_afm_addr) {
+		if (pfr_spi_erase_region(ROT_INTERNAL_AFM, true, internal_afm_addr, AFM_BODY_SIZE)) {
+			LOG_ERR("Failed to erase AFM body Partition (%x)", internal_afm_addr);
+			return Failure;
+		}
+		if (pfr_spi_region_read_write_between_spi(image_type, pfm_afm_addr,
+					ROT_INTERNAL_AFM, internal_afm_addr, AFM_BODY_SIZE)) {
+			LOG_ERR("Failed to write AFM body Partition (%x)", internal_afm_addr);
+			return Failure;
+		}
+
+	} else {
+		if (erase_afm_body(internal_afm_addr))
+			return Failure;
+	}
+
+	return Success;
+}
+
+int pfr_recover_internal_afm(struct pfr_manifest *manifest)
+{
+	LOG_INF("Recovery internal AFM");
+
+	if (recover_internal_afm(BMC_SPI, manifest->bmc_afm_address, BMC_AFM_BODY_OFFSET))
+		return Failure;
+	if (recover_internal_afm(PCH_SPI, manifest->cpu0_afm_address, CPU0_AFM_BODY_OFFSET))
+		return Failure;
+
+	LOG_INF("Recovery success");
+	return Success;
+}
+#endif
+#endif
 
 int intel_pfr_recover_update_action(struct pfr_manifest *manifest)
 {

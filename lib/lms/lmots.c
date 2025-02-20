@@ -134,7 +134,7 @@ static unsigned short lmots_checksum_calculate(const mbedtls_lmots_parameters_t 
 
 #ifdef CONFIG_CRYPTO_ASPEED
 #include <crypto/hash.h>
-#define HASH_DRV_NAME CONFIG_CRYPTO_ASPEED_HASH_DRV_NAME
+#define HASH_DRV_NAME DEVICE_DT_NAME(DT_INST(0, aspeed_hace))    // define hash driver for Aspeed
 static int has_engine_setup = 0;
 static int hw_sha256_abort(const struct device *dev, struct hash_ctx *ini)
 {

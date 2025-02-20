@@ -136,8 +136,8 @@ void spim_irq_init(void)
 			continue;
 		}
 		log_ctrls[i].dev = spim_devs[i];
-		spim_isr_callback_install(spim_devs[i], demo_spim_isr_callback);
 		k_work_init(&log_ctrls[i].log_work, demo_spim_log_work);
+		spim_isr_callback_install(spim_devs[i], demo_spim_isr_callback);
 	}
 	k_work_init(&log_bmc_rst_work, demo_spim_log_bmc_rst_work);
 }

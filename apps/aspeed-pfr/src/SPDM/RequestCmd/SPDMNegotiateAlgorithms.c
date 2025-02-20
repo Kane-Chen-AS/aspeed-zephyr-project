@@ -12,23 +12,26 @@ int spdm_negotiate_algorithms(void *ctx)
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	struct spdm_message req_msg, rsp_msg;
 	int ret;
+	size_t buf_len;
 
 	req_msg.header.spdm_version = context->local.version.version_number_selected;
 	req_msg.header.request_response_code = SPDM_REQ_NEGOTIATE_ALGORITHMS;
 	req_msg.header.param1 = 0; /* N: Number of algorithms in ReqAlgStruct */
 	req_msg.header.param2 = 0; /* Reserved */
 
+	buf_len = 28
+		+ 4 * 0 /* context->local.algorithms.ext_asym_sel_count A */
+		+ 4 * 0; /* context->local.algorithms.ext_hash_sel_count E */
+
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+	buf_len += 4 * 4; /* Add four items */
+#endif
 	/* Serialize local algorithm to buffer */
-	spdm_buffer_init(&req_msg.buffer,
-			32
-			+ 4 * 0 /* context->local.algorithms.ext_asym_sel_count A */
-			+ 4 * 0 /* context->local.algorithms.ext_hash_sel_count E */
-			+ 4
-			);
+	spdm_buffer_init(&req_msg.buffer, buf_len);
 	spdm_buffer_init(&rsp_msg.buffer, 0);
 
 	/* Update after serialized */
-	spdm_buffer_append_u16(&req_msg.buffer, context->local.algorithms.length); 
+	spdm_buffer_append_u16(&req_msg.buffer, context->local.algorithms.length);
 	spdm_buffer_append_u8(&req_msg.buffer, context->local.algorithms.measurement_spec_sel);
 	spdm_buffer_append_u8(&req_msg.buffer, context->local.algorithms.other_param_sel);
 	spdm_buffer_append_u32(&req_msg.buffer, context->local.algorithms.base_asym_sel);
@@ -44,10 +47,37 @@ int spdm_negotiate_algorithms(void *ctx)
 	spdm_buffer_append_u8(&req_msg.buffer, context->local.algorithms.ext_asym_sel_count); /* A */
 	spdm_buffer_append_u8(&req_msg.buffer, context->local.algorithms.ext_hash_sel_count); /* E */
 	spdm_buffer_append_reserved(&req_msg.buffer, 2);
-	for (size_t i=0; i < context->local.algorithms.ext_asym_sel_count; ++i)
+	for (size_t i = 0; i < context->local.algorithms.ext_asym_sel_count; ++i)
 		spdm_buffer_append_u32(&req_msg.buffer, context->local.algorithms.ext_asym_sel[i]);
-	for (size_t i=0; i < context->local.algorithms.ext_hash_sel_count; ++i)
+	for (size_t i = 0; i < context->local.algorithms.ext_hash_sel_count; ++i)
 		spdm_buffer_append_u32(&req_msg.buffer, context->local.algorithms.ext_hash_sel[i]);
+#endif
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+	if (req_msg.header.spdm_version == SPDM_VERSION_12) {
+		// AlgStruct
+		// DHE
+		spdm_buffer_append_u8(&req_msg.buffer, 0x02);
+		spdm_buffer_append_u8(&req_msg.buffer, 0x20);
+		spdm_buffer_append_u16(&req_msg.buffer, BIT(4));
+
+
+		// AEAD
+		spdm_buffer_append_u8(&req_msg.buffer, 0x03);
+		spdm_buffer_append_u8(&req_msg.buffer, 0x20);
+		spdm_buffer_append_u16(&req_msg.buffer, BIT(1));
+
+		// ReqBaseAsymAlg
+		spdm_buffer_append_u8(&req_msg.buffer, 0x04);
+		spdm_buffer_append_u8(&req_msg.buffer, 0x20);
+		spdm_buffer_append_u16(&req_msg.buffer, BIT(7));
+
+		// KeySchedule
+		spdm_buffer_append_u8(&req_msg.buffer, 0x05);
+		spdm_buffer_append_u8(&req_msg.buffer, 0x20);
+		spdm_buffer_append_u16(&req_msg.buffer, BIT(0));
+
+		req_msg.header.param1 = 4;
+	}
 #endif
 
 	/* Update request length */
@@ -137,16 +167,16 @@ int spdm_negotiate_algorithms(void *ctx)
 	spdm_buffer_get_u8(&rsp_msg.buffer, &context->remote.algorithms.ext_asym_sel_count); /* A' */
 	spdm_buffer_get_u8(&rsp_msg.buffer, &context->remote.algorithms.ext_hash_sel_count); /* E' */
 	spdm_buffer_get_reserved(&rsp_msg.buffer, 2);
-	for (size_t i=0; i < context->remote.algorithms.ext_asym_sel_count; ++i)
+	for (size_t i = 0; i < context->remote.algorithms.ext_asym_sel_count; ++i)
 		spdm_buffer_get_u32(&req_msg.buffer, &context->remote.algorithms.ext_asym_sel[i]);
-	for (size_t i=0; i < context->remote.algorithms.ext_hash_sel_count; ++i)
+	for (size_t i = 0; i < context->remote.algorithms.ext_hash_sel_count; ++i)
 		spdm_buffer_get_u32(&req_msg.buffer, &context->remote.algorithms.ext_hash_sel[i]);
 #endif
 	ret = 0;
 
 	/* Construct transcript for challenge */
 	spdm_buffer_resize(&context->message_a,
-			context->message_a.size + 
+			context->message_a.size +
 			req_msg.buffer.write_ptr + sizeof(req_msg.header) +
 			rsp_msg.buffer.write_ptr + sizeof(rsp_msg.header));
 	spdm_buffer_append_array(&context->message_a, &req_msg.header, sizeof(req_msg.header));

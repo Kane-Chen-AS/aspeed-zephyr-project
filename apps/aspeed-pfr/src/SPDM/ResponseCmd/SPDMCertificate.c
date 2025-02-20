@@ -16,8 +16,8 @@ int spdm_handle_get_certificate(void *ctx, void *req, void *rsp)
 
 	uint8_t slot_id;
 	uint16_t offset, length;
-	slot_id = req_msg->header.param1; // Slot Id should be 0~7
 
+	slot_id = req_msg->header.param1; // Slot Id should be 0~7
 	if ((req_msg->header.spdm_version != SPDM_VERSION_10) &&
 			(req_msg->header.spdm_version != SPDM_VERSION_11) &&
 			(req_msg->header.spdm_version != SPDM_VERSION_12)) {
@@ -41,6 +41,8 @@ int spdm_handle_get_certificate(void *ctx, void *req, void *rsp)
 
 	spdm_buffer_get_u16(&req_msg->buffer, &offset);
 	spdm_buffer_get_u16(&req_msg->buffer, &length);
+	if (offset == 0)
+		LOG_INF("Handle GET_CERTIFICATE");
 
 	rsp_msg->header.spdm_version = req_msg->header.spdm_version;
 	rsp_msg->header.request_response_code = SPDM_RSP_CERTIFICATE;
@@ -48,12 +50,13 @@ int spdm_handle_get_certificate(void *ctx, void *req, void *rsp)
 	rsp_msg->header.param2 = slot_id;
 
 	/* Certificate Chain Data format:
-	 * [0:1]   Length: Total length of the certificate chain in bytes, 
+	 * [0:1]   Length: Total length of the certificate chain in bytes,
 	 *                 including all fields in this table (Little endian.
 	 * [2:3]   Reserved.
 	 * [4:4+H] RootHash: Hash value of Root Certificate.
 	 * [4+H:-] Certificate Chain data
-	 * */
+	 *
+	 */
 
 	/* TODO: Configurable maximum portion_length? */
 	uint16_t portion_length = 0x100;
@@ -65,7 +68,12 @@ int spdm_handle_get_certificate(void *ctx, void *req, void *rsp)
 		spdm_buffer_append_u16(&rsp_msg->buffer, portion_length);
 		spdm_buffer_append_u16(&rsp_msg->buffer, cert_size - (offset + portion_length));
 	} else {
-		portion_length = cert_size - offset;
+		if (cert_size < offset) {
+			LOG_ERR("Invalid offset : %u", offset);
+			ret = -1;
+			goto cleanup;
+		}
+		portion_length = (cert_size - offset) & 0xffff;
 		spdm_buffer_init(&rsp_msg->buffer,
 				2 + 2 + portion_length);
 		spdm_buffer_append_u16(&rsp_msg->buffer, portion_length);

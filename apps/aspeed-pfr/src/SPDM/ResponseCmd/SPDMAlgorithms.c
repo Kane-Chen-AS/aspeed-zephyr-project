@@ -13,6 +13,7 @@ int spdm_handle_negotiate_algorithms(void *ctx, void *req, void *rsp)
 	struct spdm_message *req_msg = (struct spdm_message *)req;
 	struct spdm_message *rsp_msg = (struct spdm_message *)rsp;
 	int ret = -1;
+	size_t buf_len;
 
 	uint16_t length;
 	uint8_t measurement_spec_sel;
@@ -39,17 +40,17 @@ int spdm_handle_negotiate_algorithms(void *ctx, void *req, void *rsp)
 
 	spdm_buffer_get_u8(&req_msg->buffer, &measurement_spec_sel);
 	if ((measurement_spec_sel & SPDM_MEASUREMENT_BLOCK_DMTF_SPEC) == 0) {
-		LOG_ERR("NEGOTIATE_ALGORITHMS MeasurmentSpecificationSel=%02x not consent",
+		LOG_ERR("NEGOTIATE_ALGORITHMS MeasurementSpecificationSel=%02x not consent",
 				measurement_spec_sel);
 		rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
 		goto cleanup;
 	}
 
-	if (req_msg->header.spdm_version == SPDM_VERSION_10 || req_msg->header.spdm_version == SPDM_VERSION_11) {
+	if (req_msg->header.spdm_version == SPDM_VERSION_10 ||
+		req_msg->header.spdm_version == SPDM_VERSION_11)
 		spdm_buffer_get_reserved(&req_msg->buffer, 1);
-	} else if (req_msg->header.spdm_version >= SPDM_VERSION_12) {
+	else if (req_msg->header.spdm_version >= SPDM_VERSION_12)
 		spdm_buffer_get_u8(&req_msg->buffer, &context->remote.algorithms.other_param_sel);
-	}
 
 	spdm_buffer_get_u32(&req_msg->buffer, &base_asym_sel);
 	if ((base_asym_sel & SPDM_ALGORITHMS_BASE_ALGO_TPM_ALG_ECDSA_ECC_NIST_P384) == 0) {
@@ -78,55 +79,57 @@ int spdm_handle_negotiate_algorithms(void *ctx, void *req, void *rsp)
 		spdm_buffer_get_u8(&req_msg->buffer, &context->remote.algorithms.ext_asym_sel_count); /* A */
 		spdm_buffer_get_u8(&req_msg->buffer, &context->remote.algorithms.ext_hash_sel_count); /* E */
 		spdm_buffer_get_reserved(&req_msg->buffer, 2);
-		for (size_t i=0; i < context->remote.algorithms.ext_asym_sel_count; ++i) {
+		for (size_t i = 0; i < context->remote.algorithms.ext_asym_sel_count; ++i) {
 			// [0]   Registry ID
 			// [1]   Reserved
 			// [2:3] AlgorithmID
 			spdm_buffer_get_u32(&req_msg->buffer, &context->remote.algorithms.ext_asym_sel[i]);
 		}
-		for (size_t i=0; i < context->remote.algorithms.ext_hash_sel_count; ++i) {
+		for (size_t i = 0; i < context->remote.algorithms.ext_hash_sel_count; ++i) {
 			// [0]   Registry ID
 			// [1]   Reserved
 			// [2:3] AlgorithmID
 			spdm_buffer_get_u32(&req_msg->buffer, &context->remote.algorithms.ext_hash_sel[i]);
 		}
-		/* ReqAlgStruct */
-		uint8_t alg_type;
-		// Type of algorithm.
-		// 0 and 1. Reserved.
-		// 2. DHE.
-		// 3. AEADCipherSuite.
-		// 4. ReqBaseAsymAlg.
-		// 5. KeySchedule.
-		// All other values reserved
-		spdm_buffer_get_u8(&req_msg->buffer, &alg_type);
-		if (alg_type <= 1 || alg_type > 5) {
-			LOG_ERR("ReqAlgStruct.AlgType incorrect %02x", alg_type);
-			rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
-			goto cleanup;
+		if (req_msg->header.param1) {
+			/* ReqAlgStruct */
+			uint8_t alg_type;
+			// Type of algorithm.
+			// 0 and 1. Reserved.
+			// 2. DHE.
+			// 3. AEADCipherSuite.
+			// 4. ReqBaseAsymAlg.
+			// 5. KeySchedule.
+			// All other values reserved
+			spdm_buffer_get_u8(&req_msg->buffer, &alg_type);
+			if (alg_type <= 1 || alg_type > 5) {
+				LOG_ERR("ReqAlgStruct.AlgType incorrect %02x", alg_type);
+				rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
+				goto cleanup;
+			}
+
+			uint8_t alg_count;
+			// AlgCount:
+			// Bit[7:4] Number of bytes required to describe Requester supported SPDM
+			//          enumerated fixed algorithms (= FixedAlgCount ).
+			//          FixedAlgCount + 2 shall be a multiple of 4.
+			// Bit[3:0] Number of Requester-supported extended algorithms (= ExtAlgCount )
+			spdm_buffer_get_u8(&req_msg->buffer, &alg_count);
+			if ((((alg_count & 0xf0) >> 4) + 2) % 4 != 0) {
+				LOG_ERR("ReqAlgStruct.AlgCount incorrect %02x", alg_count);
+				rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
+				goto cleanup;
+			}
+
+			uint16_t alg_supported;
+
+			spdm_buffer_get_u16(&req_msg->buffer, &alg_supported);
+			for (size_t i = 0; i < (size_t)(alg_count & 0x0f); ++i) {
+				uint32_t alg_external;
+
+				spdm_buffer_get_u32(&req_msg->buffer, &alg_external);
+			}
 		}
-
-		uint8_t alg_count;
-		// AlgCount:
-		// Bit[7:4] Number of bytes required to describe Requester supported SPDM
-		//          enumerated fixed algorithms (= FixedAlgCount ). 
-		//          FixedAlgCount + 2 shall be a multiple of 4.
-		// Bit[3:0] Number of Requester-supported extended algorithms (= ExtAlgCount )
-		spdm_buffer_get_u8(&req_msg->buffer, &alg_count);
-		if ( (((alg_count & 0xf0) >> 4) + 2) % 4 != 0) {
-			LOG_ERR("ReqAlgStruct.AlgCount incorrect %02x", alg_count);
-			rsp_msg->header.param1 = SPDM_ERROR_CODE_INVALID_REQUEST;
-			goto cleanup;
-		}
-
-		uint16_t alg_supported;
-		spdm_buffer_get_u16(&req_msg->buffer, &alg_supported);
-
-		for (size_t i=0; i < (size_t)(alg_count & 0x0f); ++i) {
-			uint32_t alg_external;
-			spdm_buffer_get_u32(&req_msg->buffer, &alg_external);
-		}
-
 	}
 
 	/* Compare with local algorithm */
@@ -135,12 +138,15 @@ int spdm_handle_negotiate_algorithms(void *ctx, void *req, void *rsp)
 	rsp_msg->header.request_response_code = SPDM_RSP_ALGORITHMS;
 	rsp_msg->header.param1 = 0; /* N: Number of algorithm in RespAlgStruct */
 	rsp_msg->header.param2 = 0;
-	spdm_buffer_init(&rsp_msg->buffer,
-			36
+	buf_len = 32
 			+ 4 * 0 /* context->local.algorithms.ext_asym_sel_count  A' */
 			+ 4 * 0 /* context->local.algorithms.ext_hash_sel_count  E' */
-			+ 0 /* Sum sizeof(RespAlgStruct) */
-			);
+			+ 0; /* Sum sizeof(RespAlgStruct) */
+
+#if defined(CONFIG_SECURE_CONNECTION_RESPONDER)
+	buf_len += 4 * 4; /* Add four items */
+#endif
+	spdm_buffer_init(&rsp_msg->buffer, buf_len);
 	spdm_buffer_append_u16(&rsp_msg->buffer, 0); /* Placeholder, update later */
 	spdm_buffer_append_u8(&rsp_msg->buffer, context->local.algorithms.measurement_spec_sel);
 	spdm_buffer_append_u8(&rsp_msg->buffer, context->local.algorithms.other_param_sel);
@@ -153,13 +159,41 @@ int spdm_handle_negotiate_algorithms(void *ctx, void *req, void *rsp)
 	spdm_buffer_append_u8(&rsp_msg->buffer, 0); /* A' */
 	spdm_buffer_append_u8(&rsp_msg->buffer, 0); /* E' */
 	spdm_buffer_append_reserved(&rsp_msg->buffer, 2);
+
+#if defined(CONFIG_SECURE_CONNECTION_RESPONDER)
+	if (req_msg->header.spdm_version == SPDM_VERSION_12) {
+		// AlgStruct
+		// DHE
+		spdm_buffer_append_u8(&rsp_msg->buffer, 0x02);
+		spdm_buffer_append_u8(&rsp_msg->buffer, 0x20);
+		spdm_buffer_append_u16(&rsp_msg->buffer, BIT(4));
+
+
+		// AEAD
+		spdm_buffer_append_u8(&rsp_msg->buffer, 0x03);
+		spdm_buffer_append_u8(&rsp_msg->buffer, 0x20);
+		spdm_buffer_append_u16(&rsp_msg->buffer, BIT(1));
+
+		// ReqBaseAsymAlg
+		spdm_buffer_append_u8(&rsp_msg->buffer, 0x04);
+		spdm_buffer_append_u8(&rsp_msg->buffer, 0x20);
+		spdm_buffer_append_u16(&rsp_msg->buffer, BIT(7));
+
+		// KeySchedule
+		spdm_buffer_append_u8(&rsp_msg->buffer, 0x05);
+		spdm_buffer_append_u8(&rsp_msg->buffer, 0x20);
+		spdm_buffer_append_u16(&rsp_msg->buffer, BIT(0));
+
+		rsp_msg->header.param1 = 4;
+	}
+#endif
 #else
 	spdm_buffer_append_u8(&rsp_msg->buffer, context->local.algorithms.ext_asym_sel_count); /* A' */
 	spdm_buffer_append_u8(&rsp_msg->buffer, context->local.algorithms.ext_hash_sel_count); /* E' */
 	spdm_buffer_append_reserved(&rsp_msg->buffer, 2);
-	for (size_t i=0; i < context->local.algorithms.ext_asym_sel_count; ++i)
+	for (size_t i = 0; i < context->local.algorithms.ext_asym_sel_count; ++i)
 		spdm_buffer_append_u32(&req_msg->buffer, context->local.algorithms.ext_asym_sel[i]);
-	for (size_t i=0; i < context->local.algorithms.ext_hash_sel_count; ++i)
+	for (size_t i = 0; i < context->local.algorithms.ext_hash_sel_count; ++i)
 		spdm_buffer_append_u32(&req_msg->buffer, context->local.algorithms.ext_hash_sel[i]);
 #endif
 	*((uint8_t *)rsp_msg->buffer.data) = (rsp_msg->buffer.write_ptr + 4) & 0xff;
@@ -175,9 +209,9 @@ int spdm_handle_negotiate_algorithms(void *ctx, void *req, void *rsp)
 	spdm_buffer_append_array(&context->message_a, &rsp_msg->header, sizeof(rsp_msg->header));
 	spdm_buffer_append_array(&context->message_a, rsp_msg->buffer.data, rsp_msg->buffer.write_ptr);
 
-	LOG_HEXDUMP_INF(rsp_msg->buffer.data, rsp_msg->buffer.size, "ALGORITHMS DATA:");
+	LOG_HEXDUMP_INF(rsp_msg->buffer.data, rsp_msg->buffer.write_ptr, "ALGORITHMS DATA:");
 	ret = 0;
 cleanup:
-	
+
 	return ret;
 }

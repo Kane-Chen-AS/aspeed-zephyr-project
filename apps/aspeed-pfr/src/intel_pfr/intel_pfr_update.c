@@ -42,7 +42,6 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 	int status = 0;
 	uint32_t read_address = 0;
 	uint32_t target_address = 0;
-	bool afm_update = false;
 	bool cpld_update = false;
 
 	if (manifest->image_type == BMC_TYPE) {
@@ -73,17 +72,23 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 	else if (manifest->image_type == AFM_TYPE) {
 		LOG_INF("AFM Staging Region Verification");
 		manifest->image_type = BMC_TYPE;
-		read_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		status = ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+				(uint8_t *)&read_address, sizeof(read_address));
+		if (status != Success)
+			return Failure;
+
 		target_address = 0;
-		afm_update = true;
 	}
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
 	else if (manifest->image_type == AFM_TYPE) {
 		LOG_INF("AFM Staging Region Verification");
 		manifest->image_type = BMC_TYPE;
-		read_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		status = ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+				(uint8_t *)&read_address, sizeof(read_address));
+		if (status != Success)
+			return Failure;
+
 		target_address = CONFIG_BMC_AFM_RECOVERY_OFFSET;
-		afm_update = true;
 	}
 #endif
 #endif
@@ -129,6 +134,13 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 	}
 
 	manifest->update_fw->pc_length = manifest->pc_length;
+	if ((manifest->pc_type == PFR_AFM) ||
+		(manifest->pc_type == PFR_AFM_PER_DEV) ||
+		(manifest->pc_type == PFR_AFM_ADD_TO_UPDATE)) {
+		LOG_INF("AFM doesn't have PFM, to ignore PFM validation");
+		manifest->image_type = AFM_TYPE;
+		return Success;
+	}
 
 	if (manifest->hash_curve == hash_sign_algo384 || manifest->hash_curve == hash_sign_algo256)
 		manifest->address += LMS_PFM_SIG_BLOCK_SIZE;
@@ -160,9 +172,7 @@ int pfr_staging_verify(struct pfr_manifest *manifest)
 	if (status == Success)
 		LOG_INF("Staging area verification successful");
 
-	if (afm_update)
-		manifest->image_type = AFM_TYPE;
-	else if (cpld_update)
+	if (cpld_update)
 		manifest->image_type = CPLD_TYPE;
 
 	return status;
@@ -311,6 +321,12 @@ int update_afm_v30(enum AFM_PARTITION_TYPE part, uint32_t address, size_t length
 			return Failure;
 		}
 	} else if (part == AFM_PART_RCV_1) {
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+			(uint8_t *)&source_address, sizeof(source_address)) != Success) {
+			LOG_ERR("Failed to get AFM Staging Offset");
+			return Failure;
+		}
+
 		if (pfr_spi_erase_region(BMC_SPI, true,
 					CONFIG_BMC_AFM_RECOVERY_OFFSET,
 					CONFIG_BMC_AFM_STAGING_RECOVERY_SIZE)) {
@@ -319,7 +335,7 @@ int update_afm_v30(enum AFM_PARTITION_TYPE part, uint32_t address, size_t length
 		}
 
 		if (pfr_spi_region_read_write_between_spi(
-					BMC_SPI, CONFIG_BMC_AFM_STAGING_OFFSET,
+					BMC_SPI, source_address,
 					BMC_SPI, CONFIG_BMC_AFM_RECOVERY_OFFSET,
 					CONFIG_BMC_AFM_STAGING_RECOVERY_SIZE)) {
 			LOG_ERR("Failed to write AFM Recovery Partition");
@@ -351,16 +367,20 @@ int update_afm_v40(enum AFM_PARTITION_TYPE part, uint32_t address, size_t length
 		if (manifest->state == FIRMWARE_RECOVERY) {
 			flash_type = ROT_EXT_AFM_ACT_1;
 			source_flash_type = ROT_EXT_AFM_RC_1;
-			LOG_INF("to recover active region");
+			LOG_INF("Recover active region");
 		} else {
 			flash_type = ROT_EXT_AFM_ACT_1;
 			source_flash_type = BMC_SPI;
-			LOG_INF("to update active region");
+			LOG_INF("Update active region");
 		}
 	} else if (part == AFM_PART_RCV_1) {
 		flash_type = ROT_EXT_AFM_RC_1;
 		source_flash_type = BMC_SPI;
-		source_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+			(uint8_t *)&source_address, sizeof(source_address)) != Success) {
+			LOG_ERR("Failed to get AFM Staging Offset");
+			return Failure;
+		}
 	} else {
 		return Failure;
 	}
@@ -398,14 +418,16 @@ int update_afm_image(struct pfr_manifest *manifest, uint32_t flash_select, void 
 	int status = 0;
 
 	LOG_INF("manifest->address=%08x", manifest->address);
-	status = manifest->base->verify((struct manifest *)manifest, manifest->hash,
-			manifest->verification->base, manifest->pfr_hash->hash_out,
-			manifest->pfr_hash->length);
+	// Change the image to AFM type for verifying the capsule in staging region
+	manifest->image_type = AFM_TYPE;
+	status = manifest->update_fw->base->verify((struct firmware_image *)manifest, NULL);
 	if (status != Success) {
 		LOG_ERR("AFM update capsule verification failed");
 		LogUpdateFailure(UPD_CAPSULE_AUTH_FAIL, 1);
 		return Failure;
 	}
+	// Change the image back to BMC type for reading the staging region in BMC side
+	manifest->image_type = BMC_TYPE;
 
 	pc_length = manifest->pc_length;
 	int offset = PFM_SIG_BLOCK_SIZE;
@@ -418,14 +440,7 @@ int update_afm_image(struct pfr_manifest *manifest, uint32_t flash_select, void 
 	status = pfr_spi_read(manifest->image_type, payload_address + offset + 4,
 				sizeof(uint8_t), (uint8_t *)&hrot_svn);
 	if (status != Success) {
-		LOG_ERR("Flash read AFM SVN failed");
-		return Failure;
-	}
-
-	status = svn_policy_verify(SVN_POLICY_FOR_AFM, hrot_svn);
-	if (status != Success) {
-		LOG_ERR("Verify AFM SVN failed");
-		LogUpdateFailure(UPD_CAPSULE_INVALID_SVN, 1);
+		LOG_ERR("Flash read AFM SVN failed, status = %d", status);
 		return Failure;
 	}
 
@@ -537,6 +552,8 @@ int verify_and_update_cpld_images(struct pfr_manifest *manifest, uint32_t flash_
 	ARG_UNUSED(AoData);
 	uint32_t read_addr = manifest->address;
 	uint32_t region_size;
+	int status;
+	uint32_t image_size;
 
 	if (manifest->pfr_authentication->online_update_cap_verify(manifest)) {
 		LOG_ERR("Verify BMC's CPLD staging region failed");
@@ -544,6 +561,18 @@ int verify_and_update_cpld_images(struct pfr_manifest *manifest, uint32_t flash_
 	}
 
 	region_size = pfr_spi_get_device_size(ROT_EXT_CPLD_ACT);
+	status = pfr_spi_read(manifest->image_type, manifest->address + sizeof(uint32_t),
+			sizeof(image_size), (uint8_t *)&image_size);
+	if (status != Success) {
+		LOG_ERR("Failed to read image size");
+		return Failure;
+	}
+	if ((image_size + PFM_SIG_BLOCK_SIZE) > region_size) {
+		LOG_ERR("Image size %x is bigger than CPLD active region %x",
+				image_size + PFM_SIG_BLOCK_SIZE, region_size);
+		return Failure;
+	}
+
 	if (pfr_spi_erase_region(ROT_EXT_CPLD_ACT, true, 0, region_size)) {
 		LOG_ERR("Erase CPLD active region failed");
 		return Failure;
@@ -724,7 +753,11 @@ int update_firmware_image(uint32_t image_type, void *AoData, void *EventContext,
 		LOG_INF("AFM Update in progress");
 		update_type = AFM_TYPE;
 		pfr_manifest->image_type = BMC_TYPE;
-		source_address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		if (ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+			(uint8_t *)&source_address, sizeof(source_address)) != Success) {
+			LOG_ERR("Failed to get AFM Staging Offset");
+			return Failure;
+		}
 	}
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
@@ -809,8 +842,10 @@ int update_firmware_image(uint32_t image_type, void *AoData, void *EventContext,
 		// for handling the pending recovery update.
 		if (cpld_update_status->Region[PCH_REGION].Recoveryregion != RECOVERY_PENDING_REQUEST_HANDLED) {
 			status = pfr_staging_pch_staging(pfr_manifest);
-			if (status != Success)
+			if (status != Success) {
+				LogUpdateFailure(UPD_CAPSULE_AUTH_FAIL, 1);
 				return Failure;
+			}
 		}
 	}
 

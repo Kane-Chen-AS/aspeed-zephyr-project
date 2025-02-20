@@ -12,7 +12,7 @@
 
 #ifdef CONFIG_CRYPTO_ASPEED
 #ifndef HASH_DRV_NAME
-#define HASH_DRV_NAME CONFIG_CRYPTO_ASPEED_HASH_DRV_NAME    // define hash driver for Aspeed
+#define HASH_DRV_NAME DEVICE_DT_NAME(DT_INST(0, aspeed_hace))    // define hash driver for Aspeed
 #endif
 #endif
 

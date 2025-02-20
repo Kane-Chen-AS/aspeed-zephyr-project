@@ -35,16 +35,13 @@
 #include "mctp/mctp_base_protocol.h"
 #include "cmd_channel_mctp.h"
 
-LOG_MODULE_REGISTER(mctp_i3c);
+LOG_MODULE_REGISTER(mctp_i3c, LOG_LEVEL_INF);
 
 #define I3C_0 DEVICE_DT_NAME(DT_NODELABEL(i3c0))
 #define I3C_1 DEVICE_DT_NAME(DT_NODELABEL(i3c1))
 #define I3C_2 DEVICE_DT_NAME(DT_NODELABEL(i3c2))
 #define I3C_3 DEVICE_DT_NAME(DT_NODELABEL(i3c3))
 
-#define MCTP_I3C_CPU0_EID                   0x1D
-#define MCTP_I3C_CPU1_EID                   0x9D
-#define MCTP_I3C_REGISTRATION_EID           0x1D
 #define MCTP_DOE_REGISTRATION_CMD           0x4
 
 static uint8_t i3c_data_in[256];
@@ -226,10 +223,16 @@ int mctp_i3c_send_eid_announcement(mctp *mctp_instance, int *duration)
 	struct mctp_interface_wrapper *mctp_wrapper = &mctp_instance->mctp_wrapper;
 	struct mctp_interface *mctp_interface = &mctp_wrapper->mctp_interface;
 	struct device_manager *device_mgr = mctp_interface->device_manager;
-	uint8_t src_eid = device_manager_get_device_eid(device_mgr,
+	int src_eid = device_manager_get_device_eid(device_mgr,
 				DEVICE_MANAGER_SELF_DEVICE_NUM);
+
+	if (ROT_IS_ERROR(src_eid)) {
+		LOG_ERR("Failed to get self EID");
+		return status;
+	}
+
 	uint8_t req_buf[14] = {MCTP_BASE_PROTOCOL_MSG_TYPE_VENDOR_DEF, 0x80, 0x86, 0x80, 0x0a, 0x00,
-		0x00, 0x00, 0x00, MCTP_DOE_REGISTRATION_CMD, 0x00, 0x00, 0x01, src_eid};
+		0x00, 0x00, 0x00, MCTP_DOE_REGISTRATION_CMD, 0x00, 0x00, 0x01, (uint8_t)src_eid};
 
 	if (mctp_instance == mctp_i3c_bmc_inst.mctp_inst) {
 		dest_eid = MCTP_I3C_REGISTRATION_EID;
@@ -238,7 +241,25 @@ int mctp_i3c_send_eid_announcement(mctp *mctp_instance, int *duration)
 	} else if (mctp_instance == mctp_i3c_cpu1_inst.mctp_inst) {
 		dest_eid = MCTP_I3C_CPU1_EID;
 	} else {
+#if defined(CONFIG_PFR_MCTP_I3C_5_0)
+		uint8_t i, i3c_dev_counts;
+		bool found_mctp_inst = false;
+
+		i3c_dev_counts = mctp_i3c_target_get_dev_counts();
+
+		for (i = 0; i < i3c_dev_counts; i++) {
+			if (mctp_instance == mctp_i3c_target_get_mctp_inst(i)) {
+				dest_eid = mctp_instance->medium_conf.i3c_conf.dest_eid;
+				found_mctp_inst = true;
+				break;
+			}
+		}
+
+		if (!found_mctp_inst)
+			return status;
+#else
 		return status;
+#endif
 	}
 
 	status = mctp_interface_issue_request(mctp_interface, &mctp_instance->mctp_cmd_channel,
@@ -319,14 +340,17 @@ static uint16_t mctp_i3c_read(void *mctp_p, void *msg_p)
 	struct i3c_driver_data* data;
 	struct i3c_device_desc* desc;
 
+	LOG_DBG("mctp_inst=%p, msg_p=%p", mctp_inst, msg_p);
 	// read request from slave device.
 	dev = get_mctp_i3c_dev(mctp_inst->medium_conf.i3c_conf.bus);
+	LOG_DBG("mctp_inst->medium_conf.i3c_conf.bus=%d", mctp_inst->medium_conf.i3c_conf.bus);
 	if (dev == NULL) {
 		LOG_ERR("Failed to get i3c dev");
 		return MCTP_ERROR;
 	}
 	data = (struct i3c_driver_data *)dev->data;
 	desc = i3c_dev_list_i3c_addr_find(&data->attached_dev, mctp_inst->medium_conf.i3c_conf.addr);
+	LOG_DBG("mctp_inst->medium_conf.i3c_conf.addr=%d", mctp_inst->medium_conf.i3c_conf.addr);
 	if (desc == NULL) {
 		LOG_ERR("Device not found");
 		return MCTP_ERROR;
@@ -367,6 +391,7 @@ static uint16_t mctp_i3c_write(void *mctp_p, void *msg_p)
 	struct i3c_driver_data* data;
 	struct i3c_device_desc* desc;
 
+	LOG_DBG("mctp_inst=%p, msg_p=%p", mctp_inst, msg_p);
 	if (tx_msg->ext_params.type != MCTP_MEDIUM_TYPE_I3C)
 		return MCTP_ERROR;
 
@@ -377,8 +402,10 @@ static uint16_t mctp_i3c_write(void *mctp_p, void *msg_p)
 		return MCTP_ERROR;
 
 	dev = get_mctp_i3c_dev(mctp_inst->medium_conf.i3c_conf.bus);
+	LOG_DBG("mctp_inst->medium_conf.i3c_conf.bus=%d", mctp_inst->medium_conf.i3c_conf.bus);
 	data = (struct i3c_driver_data *)dev->data;
 	desc = i3c_dev_list_i3c_addr_find(&data->attached_dev, mctp_inst->medium_conf.i3c_conf.addr);
+	LOG_DBG("mctp_inst->medium_conf.i3c_conf.addr=%d", mctp_inst->medium_conf.i3c_conf.addr);
 	if (desc == NULL) {
 		LOG_ERR("Device not found");
 		return MCTP_ERROR;
@@ -492,13 +519,16 @@ uint8_t mctp_i3c_eid_assignment_thread_create(mctp_i3c *mctp_i3c_inst)
 			mctp_i3c_state_handler,
 			mctp_i3c_inst, NULL, NULL, 5, 0, K_NO_WAIT);
 
-	snprintf(mctp_i3c_inst->i3c_state_task_name, sizeof(mctp_i3c_inst->i3c_state_task_name),
+	int status = snprintf(mctp_i3c_inst->i3c_state_task_name, sizeof(mctp_i3c_inst->i3c_state_task_name),
 			"MCTP I3C State Handler B%02xA%02x",
 			mctp_i3c_inst->mctp_inst->medium_conf.i3c_conf.bus,
 			mctp_i3c_inst->mctp_inst->medium_conf.i3c_conf.addr);
+	if (status < 0)
+		return MCTP_ERROR;
+
 	k_thread_name_set(mctp_i3c_inst->i3c_state_tid, mctp_i3c_inst->i3c_state_task_name);
 
-	return 0;
+	return MCTP_SUCCESS;
 }
 
 void mctp_i3c_state_expiry_fn(struct k_timer *tmr)
@@ -585,7 +615,7 @@ int mctp_i3c_attach_target_dev(uint8_t bus, uint64_t pid)
 
 	mrl.len = 0x45;
 	mrl.ibi_len = 2;
-	int ret = ret = i3c_ccc_do_setmrl(desc, &mrl);
+	i3c_ccc_do_setmrl(desc, &mrl);
 	if (mctp_i3c_inst->state == MCTP_I3C_TARGET_ATTACHED) {
 		LOG_WRN("I3C device is attached");
 		return 0;

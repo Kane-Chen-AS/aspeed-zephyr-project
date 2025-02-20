@@ -7,6 +7,10 @@ target_sources(app PRIVATE
 	SPDMMain.c
 	SPDMMctpBinding.c
 
+	)
+
+if(CONFIG_PFR_SPDM_ATTESTATION)
+target_sources(app PRIVATE
 	# Attester
 	SPDMRequester.c
 	RequestCmd/SPDMGetDigests.c
@@ -16,7 +20,11 @@ target_sources(app PRIVATE
 	RequestCmd/SPDMGetVersion.c
 	RequestCmd/SPDMGetCapabilities.c
 	RequestCmd/SPDMGetMeasurements.c
+)
+endif()
 
+if(CONFIG_PFR_SPDM_RESPONDER)
+target_sources(app PRIVATE
 	# Attestee
 	SPDMResponder.c
 	ResponseCmd/SPDMDigests.c
@@ -26,6 +34,36 @@ target_sources(app PRIVATE
 	ResponseCmd/SPDMCertificate.c
 	ResponseCmd/SPDMVersion.c
 	ResponseCmd/SPDMChallengeAuth.c
+	ResponseCmd/GetMeasurementImpl.c
 	)
+endif()
 
+if(CONFIG_SECURE_CONNECTION_RESPONDER OR CONFIG_SECURE_CONNECTION_REQUESTER)
+target_sources(app PRIVATE
+	SPDMSession.c
+	SPDMKeyOperation.c
+)
+endif()
+
+if(CONFIG_SECURE_CONNECTION_REQUESTER)
+target_sources(app PRIVATE
+	RequestCmd/SPDMKeyExchange.c
+	RequestCmd/SPDMFinish.c
+	RequestCmd/SPDMGetEncap.c
+	RequestCmd/SPDMHeartBeat.c
+	RequestCmd/SPDMEnd.c
+)
+endif()
+
+if(CONFIG_SECURE_CONNECTION_RESPONDER)
+target_sources(app PRIVATE
+	ResponseCmd/SPDMKeyExchangeRsp.c
+	ResponseCmd/SPDMFinishRsp.c
+	ResponseCmd/SPDMHeartBeatRsp.c
+	ResponseCmd/SPDMEndSession.c
+	ResponseCmd/SPDMPSKExchange.c
+	ResponseCmd/SPDMEncapHandle.c
+	ResponseCmd/SPDMKeyUpdate.c
+)
+endif()
 # Request Commands

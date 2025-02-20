@@ -38,6 +38,7 @@ enum {
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 	KEY_CANCELLATION_POLICY_FOR_AFM                         = 0x13c,
 	SVN_POLICY_FOR_AFM                                      = 0x14c,
+	AFM_STAGING_REGION_OFFSET                               = 0x154,
 #endif
 };
 

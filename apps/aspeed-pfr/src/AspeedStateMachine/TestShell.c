@@ -267,8 +267,8 @@ static void inject_spi_error(const struct shell *shell, uint32_t flag)
 	 */
 	if (flag & 0x0FFFF000) {
 		/* BMC Flash */
-		const struct device *dev_mon = device_get_binding("spi_m1");
-		const struct device *dev_flash = device_get_binding("spi1_cs0");
+		const struct device *dev_mon = device_get_binding("spim@1");
+		const struct device *dev_flash = device_get_binding("spi1@0");
 		spim_ext_mux_config(dev_mon, SPIM_EXT_MUX_ROT);
 		if (flag & 0x0F000000) {
 			/* ACT */
@@ -278,7 +278,7 @@ static void inject_spi_error(const struct shell *shell, uint32_t flag)
 
 			flash_erase(dev_flash, address, 0x10000);
 			shell_print(shell, "Erase dev:%s offset:%08x size:%08x",
-					"spi1_cs0", address, 0x10000);
+					"spi1@0", address, 0x10000);
 		}
 		if (flag & 0x00F00000) {
 			/* RCV */
@@ -288,7 +288,7 @@ static void inject_spi_error(const struct shell *shell, uint32_t flag)
 
 			flash_erase(dev_flash, address, 0x10000);
 			shell_print(shell, "Erase dev:%s offset:%08x size:%08x",
-					"spi1_cs0", address, 0x10000);
+					"spi1@0", address, 0x10000);
 		}
 		if (flag & 0x000F0000) {
 			/* STG */
@@ -298,7 +298,7 @@ static void inject_spi_error(const struct shell *shell, uint32_t flag)
 
 			flash_erase(dev_flash, address, 0x10000);
 			shell_print(shell, "Erase dev:%s offset:%08x size:%08x",
-					"spi1_cs0", address, 0x10000);
+					"spi1@0", address, 0x10000);
 		}
 		if (flag & 0x0000F000) {
 			/* PCH STG */
@@ -308,15 +308,15 @@ static void inject_spi_error(const struct shell *shell, uint32_t flag)
 
 			flash_erase(dev_flash, address, 0x10000);
 			shell_print(shell, "Erase dev:%s offset:%08x size:%08x",
-					"spi1_cs0", address, 0x10000);
+					"spi1@0", address, 0x10000);
 		}
 		spim_ext_mux_config(dev_mon, SPIM_EXT_MUX_BMC_PCH);
 	}
 
 	if (flag & 0x00000FFF) {
 		/* PCH Flash */
-		const struct device *dev_mon = device_get_binding("spi_m3");
-		const struct device *dev_flash = device_get_binding("spi2_cs0");
+		const struct device *dev_mon = device_get_binding("spim@3");
+		const struct device *dev_flash = device_get_binding("spi2@0");
 		spim_ext_mux_config(dev_mon, SPIM_EXT_MUX_ROT);
 		if (flag & 0x00000F00) {
 			/* ACT */
@@ -326,7 +326,7 @@ static void inject_spi_error(const struct shell *shell, uint32_t flag)
 
 			flash_erase(dev_flash, address, 0x10000);
 			shell_print(shell, "erase dev:%s offset:%08x size:%08x",
-					"spi2_cs0", address, 0x10000);
+					"spi2@0", address, 0x10000);
 		}
 		if (flag & 0x000000F0) {
 			/* RCV */
@@ -336,7 +336,7 @@ static void inject_spi_error(const struct shell *shell, uint32_t flag)
 
 			flash_erase(dev_flash, address, 0x10000);
 			shell_print(shell, "Erase dev:%s offset:%08x size:%08x",
-					"spi2_cs0", address, 0x10000);
+					"spi2@0", address, 0x10000);
 		}
 		if (flag & 0x0000000F) {
 			/* STG */
@@ -346,7 +346,7 @@ static void inject_spi_error(const struct shell *shell, uint32_t flag)
 
 			flash_erase(dev_flash, address, 0x10000);
 			shell_print(shell, "Erase dev:%s offset:%08x size:%08x",
-					"spi2_cs0", address, 0x10000);
+					"spi2@0", address, 0x10000);
 		}
 		spim_ext_mux_config(dev_mon, SPIM_EXT_MUX_BMC_PCH);
 	}

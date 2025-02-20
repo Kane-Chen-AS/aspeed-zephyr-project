@@ -26,6 +26,7 @@ void main(void)
 
 	LOG_INF("*** ASPEED Preload FW version v%02d.%02d Board:%s ***", PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, CONFIG_BOARD);
 	aspeed_print_sysrst_info();
+	disable_abr_wdt();
 #if defined(CONFIG_AST10X0_PROGRAMMER_MP)
 	int ret;
 	uint32_t time_start, time_end;

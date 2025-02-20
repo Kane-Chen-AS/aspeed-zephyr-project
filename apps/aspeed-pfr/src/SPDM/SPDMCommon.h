@@ -37,6 +37,15 @@ typedef enum {
 	SPDM_REQ_NEGOTIATE_ALGORITHMS = 0xE3,
 	SPDM_REQ_VENDOR_DEFINED_REQUEST = 0xFE,
 	SPDM_REQ_RESPOND_IF_READY = 0xFF,
+
+	/* SPDM 1.1 */
+	SPDM_REQ_KEY_EXCHANGE = 0xE4,
+	SPDM_REQ_FINISH = 0xE5,
+	SPDM_REQ_PSK_EXCHANGE = 0xE6,
+	SPDM_REQ_HEARTBEAT = 0xE8,
+	SPDM_REQ_KEY_UPDATE = 0xE9,
+	SPDM_REQ_DELIVER_ENCAP_RESPONSE = 0xEB,
+	SPDM_REQ_END_SESSION = 0xEC,
 } SPDM_REQUEST_CODE;
 
 typedef enum {
@@ -50,6 +59,15 @@ typedef enum {
 	SPDM_RSP_ALGORITHMS = 0x63,
 	SPDM_RSP_VENDOR_DEFINED_RESPONSE = 0x7E,
 	SPDM_RSP_ERROR = 0x7F,
+
+	/* SPDM 1.1 */
+	SPDM_RSP_KEY_EXCHANGE_RSP = 0x64,
+	SPDM_RSP_FINISH_RSP = 0x65,
+	SPDM_RSP_PSK_EXCHANGE_RSP = 0x66,
+	SPDM_RSP_HEARTBEAT_ACK = 0x68,
+	SPDM_RSP_KEY_UPDATE_ACK = 0x69,
+	SPDM_RSP_ENCAP_RSP_ACK = 0x6B,
+	SPDM_RSP_END_SESSION_ACK = 0x6C,
 } SPDM_RESPONSE_CODE;
 
 struct spdm_message_header {
@@ -63,6 +81,13 @@ typedef enum SPDM_MEDIUM {
 	SPDM_MEDIUM_SMBUS = 0x01,
 	SPDM_MEDIUM_I3C = 0x06,
 } SPDM_MEDIUM;
+
+typedef enum {
+	SPDM_MEASUREMENT_RESULT_OK = 0,
+	SPDM_MEASUREMENT_RESULT_NOT_FOUND = -1,
+	SPDM_MEASUREMENT_RESULT_INVALID_SIG = -2,
+	SPDM_MEASUREMENT_RESULT_GET_FAILED = -3
+} SPDM_MEASUREMENT_RESULT;
 #pragma pack()
 
 struct spdm_message {
@@ -77,5 +102,21 @@ typedef struct {
 	struct spdm_message *message;
 } spdm_request_data;
 
-void init_spdm();
-bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, uint8_t bus, uint8_t dst_sa, uint8_t dst_eid);
+typedef struct {
+	uint32_t magic;
+	uint32_t len;
+	uint8_t cert[4096];
+	uint8_t hash[32];
+	uint8_t pub_key[97];
+	uint8_t type;
+} cert_info;
+
+#define SPDM_MAX_HASH_SIZE 64
+#define DEVID_CERT_OFFSET 0
+#define ALIAS_CERT_OFFSET 0x2000
+#define CERT_DATA_MAGIC 0x43455254
+#define ALIAS_PRI_KEY_ADDR 0xbfc00
+
+void init_spdm(void);
+bool init_requester_context(struct spdm_context *context, SPDM_MEDIUM medium, uint8_t bus, uint8_t dst_sa, uint8_t dst_eid, bool load_key);
+void spdm_hexdump_helper(void *in, int len, const char *pre);

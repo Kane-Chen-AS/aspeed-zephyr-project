@@ -29,6 +29,13 @@ typedef struct _mctp_i3c {
 	K_KERNEL_STACK_MEMBER(i3c_state_handler_stack, MCTP_I3C_STATE_HANDLER_STACK_SIZE);
 } mctp_i3c;
 
+#if defined(CONFIG_PFR_MCTP_I3C_5_0)
+typedef struct _mctp_i3c_dev {
+	mctp_i3c mctp_i3c_inst;
+	mctp_i3c_conf i3c_conf;
+} mctp_i3c_dev;
+#endif
+
 uint8_t mctp_i3c_init(mctp *mctp_instance, mctp_medium_conf medium_conf);
 uint8_t mctp_i3c_target_init(mctp *mctp_instance, mctp_medium_conf medium_conf);
 uint8_t mctp_i3c_deinit(mctp *mctp_instance);
@@ -54,4 +61,7 @@ void mctp_i3c_configure_cpu_i3c_devs(void);
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 void mctp_i3c_target_intf_init(void);
 uint8_t mctp_i3c_target_mctp_stop(void);
+uint8_t mctp_i3c_target_get_dev_counts(void);
+mctp *mctp_i3c_target_get_mctp_inst(uint8_t index);
+mctp *mctp_i3c_target_get_by_bus(uint8_t bus);
 #endif

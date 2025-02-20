@@ -68,6 +68,10 @@ uint8_t AfmStatus = 0;
 #endif
 #endif
 
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+#include "SPDM/SPDMSession.h"
+#endif
+
 #if defined(CONFIG_OTP_ASPEED) || defined(CONFIG_OTP_SIM)
 #if defined(CONFIG_OTP_KEY_RETIRE) || defined(CONFIG_OTP_KEY_ADD)
 #include <zephyr/storage/flash_map.h>
@@ -148,14 +152,18 @@ int get_staging_hash(uint8_t image_type, CPLD_STATUS *cpld_status, uint8_t *hash
 		staging_size = CONFIG_BMC_PFR_STAGING_SIZE;
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 	} else if (image_type == AFM_TYPE) {
-		address = CONFIG_BMC_AFM_STAGING_OFFSET;
+		ufm_staging_offset = AFM_STAGING_REGION_OFFSET;
 		staging_size = CONFIG_BMC_AFM_STAGING_RECOVERY_SIZE;
 #endif
 	} else {
 		return -1;
 	}
 
-	if (image_type == BMC_TYPE || image_type == PCH_TYPE) {
+	if (image_type == BMC_TYPE ||
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+		image_type == AFM_TYPE ||
+#endif
+		image_type == PCH_TYPE) {
 		if (ufm_read(PROVISION_UFM, ufm_staging_offset, (uint8_t *)&address,
 					sizeof(address)))
 			return -1;
@@ -299,8 +307,10 @@ void do_init(void *o)
 		util_init_I3C();
 #if defined(CONFIG_PFR_MCTP)
 		init_pfr_mctp();
-#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+#if defined(CONFIG_PFR_SPDM_ATTESTATION) || defined(CONFIG_PFR_SPDM_RESPONDER)
 		init_spdm();
+#endif
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
 		/* Read UFM Setting */
 		if (IsSpdmAttestationEnabled()) {
 			spdm_enable_attester();
@@ -355,6 +365,10 @@ void enter_tmin1(void *o)
 	if (bmc_reset_only) {
 		init_i2c_filters();
 		BMCBootHold();
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+		spdm_disable_session(afm_dev_idx_bmc);
+		set_secure_connection_state(false);
+#endif
 		evt_ctx->data.bit8[2] |= BmcOnlyReset;
 		gWdtBootStatus &= ~WDT_BMC_BOOT_DONE_MASK;
 		SetBmcCheckpoint(0);
@@ -362,15 +376,19 @@ void enter_tmin1(void *o)
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 		mctp_i3c_target_mctp_stop();
 #else
- 		if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
- 					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
+		if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
+					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
 			LOG_WRN("Failed to detach BMC's i3c target device");
- 		else
+		else
 			LOG_INF("BMC's I3C target device detached");
 #endif
 #endif
 	} else if (pch_reset_only) {
 		PCHBootHold();
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+		spdm_disable_session(afm_dev_idx_cpu0);
+		spdm_disable_session(afm_dev_idx_cpu1);
+#endif
 		evt_ctx->data.bit8[2] |= PchOnlyReset;
 		gWdtBootStatus &= ~WDT_PCH_BOOT_DONE_MASK;
 #if defined(CONFIG_INTEL_PFR)
@@ -382,6 +400,12 @@ void enter_tmin1(void *o)
 		evt_ctx->data.bit8[2] &= ~(BmcOnlyReset | PchOnlyReset);
 		BMCBootHold();
 		PCHBootHold();
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+		spdm_disable_session(afm_dev_idx_bmc);
+		spdm_disable_session(afm_dev_idx_cpu0);
+		spdm_disable_session(afm_dev_idx_cpu1);
+		set_secure_connection_state(false);
+#endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 		intel_rsu_unhide_rsu();
 #endif
@@ -395,10 +419,10 @@ void enter_tmin1(void *o)
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 		mctp_i3c_target_mctp_stop();
 #else
- 		if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
- 					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
+		if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
+					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
 			LOG_WRN("Failed to detach BMC's i3c target device");
- 		else
+		else
 			LOG_INF("BMC's I3C target device detached");
 
 		if (get_i3c_mng_owner() == I3C_MNG_OWNER_ROT) {
@@ -461,6 +485,13 @@ void verify_image(uint32_t image, uint32_t operation, uint32_t flash, struct smf
 			state->afm_active_object.RecoveryImageStatus = ret ? Failure : Success;
 		}
 	}
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+	else if (image == AFM_EVENT3) {
+		LOG_INF("authentication_image internal afm return %d", ret);
+		state->afm_active_object.InternalAFMStatus = ret ? Failure : Success;
+
+	}
+#endif
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 	else if (image == CPLD_EVENT) {
@@ -642,6 +673,9 @@ void handle_image_verification(void *o)
 					last_pch_recovery_verify_status;
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 				verify_image(AFM_EVENT, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+				verify_image(AFM_EVENT3, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#endif
 #endif
 			} else if (evt_ctx->data.bit8[2] & PchOnlyReset) {
 				verify_image(PCH_EVENT, VERIFY_BACKUP, SECONDARY_FLASH_REGION, state);
@@ -652,6 +686,9 @@ void handle_image_verification(void *o)
 					last_bmc_recovery_verify_status;
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 				verify_image(AFM_EVENT, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+				verify_image(AFM_EVENT3, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#endif
 #endif
 			} else {
 				/* BMC Verification */
@@ -668,6 +705,9 @@ void handle_image_verification(void *o)
 				// SetPlatformState(AFM_FLASH_AUTH); // Not defined in documented
 				verify_image(AFM_EVENT, VERIFY_BACKUP, SECONDARY_FLASH_REGION, state);
 				verify_image(AFM_EVENT, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+				verify_image(AFM_EVENT3, VERIFY_ACTIVE, PRIMARY_FLASH_REGION, state);
+#endif
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 				// Only verify CPLD images in platform reset
@@ -758,6 +798,9 @@ void handle_image_verification(void *o)
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 						|| state->afm_active_object.ActiveImageStatus == Failure
 						|| state->afm_active_object.RecoveryImageStatus == Failure
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+						|| state->afm_active_object.InternalAFMStatus == Failure
+#endif
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 						|| state->cpld_active_object.ActiveImageStatus == Failure
@@ -855,6 +898,16 @@ void handle_recovery(void *o)
 		__attribute__ ((fallthrough));
 #endif
 	case VERIFY_FAILED:
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+		if (state->afm_active_object.InternalAFMStatus == Failure) {
+			evt_wrap.image = AFM_EVENT3;
+			ret = recover_image(&state->afm_active_object, &evt_wrap);
+			LOG_INF("Internal AFM Recovery return=%d", ret);
+			recovery_done = 1;
+		}
+#endif
+#endif
 		// Recovery matrix can be handled in recover_image
 		if (state->bmc_active_object.RecoveryImageStatus == Failure) {
 			LogRecovery(BMC_RECOVERY_FAIL);
@@ -1140,8 +1193,8 @@ void exit_tzero(void *o)
 }
 
 extern struct device *gSwMbxDev;
-extern uint8_t gUfmFifoData[64];
-extern uint8_t gReadFifoData[64];
+extern uint8_t gUfmFifoData[SWMBX_WRITE_FIFO_SIZE];
+extern uint8_t gReadFifoData[SWMBX_READ_FIFO_SIZE];
 extern uint8_t gFifoData;
 
 void handle_provision_event(void *o)
@@ -1236,7 +1289,6 @@ void handle_checkpoint(void *o)
 
 	switch (evt_ctx->data.bit8[0]) {
 	case BmcCheckpoint:
-		UpdateBmcCheckpoint(evt_ctx->data.bit8[1]);
 		if (evt_ctx->data.bit8[1] == CompletingExecutionBlock) {
 			LOG_INF("BMC Boot complete RUNTIME");
 			k_event_post(&pfr_system_event, PFR_SYSTEM_BMC_BOOTED);
@@ -1249,12 +1301,20 @@ void handle_checkpoint(void *o)
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 			mctp_i3c_target_intf_init();
 #else
- 			mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
- 					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
+			mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
+					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
 			mctp_i3c_configure_cpu_i3c_devs();
 #endif
 #endif
 		}
+		/*
+		 * After setting the BMC boot complete state, the BMC
+		 * will start the process to add PFR MCTP device. So, we
+		 * need to setup the MCTP I3C interface before setting
+		 * BMC boot complete state. Otherwise, it may cause a problem
+		 * to add the PFR MCTP device.
+		 */
+		UpdateBmcCheckpoint(evt_ctx->data.bit8[1]);
 		break;
 #if defined(CONFIG_INTEL_PFR)
 	case AcmCheckpoint:
@@ -1262,7 +1322,6 @@ void handle_checkpoint(void *o)
 		break;
 #endif
 	case BiosCheckpoint:
-		UpdateBiosCheckpoint(evt_ctx->data.bit8[1]);
 		if (evt_ctx->data.bit8[1] == CompletingExecutionBlock) {
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 			if (state->afm_active_object.ActiveImageStatus == Success) {
@@ -1270,6 +1329,7 @@ void handle_checkpoint(void *o)
 			}
 #endif
 		}
+		UpdateBiosCheckpoint(evt_ctx->data.bit8[1]);
 		break;
 	default:
 		break;
@@ -1395,23 +1455,28 @@ int validate_afm_update_type(CPLD_STATUS *cpld_update_status, uint32_t *image_ty
 		return Success;
 	}
 
-	payload_address = CONFIG_BMC_AFM_STAGING_OFFSET + PFM_SIG_BLOCK_SIZE;
+	ufm_read(PROVISION_UFM, AFM_STAGING_REGION_OFFSET,
+		(uint8_t *)&payload_address, sizeof(payload_address));
+
+	payload_address += PFM_SIG_BLOCK_SIZE;
 	LOG_INF("AFM update start payload_address=%08x", payload_address );
 	status = pfr_spi_read(BMC_TYPE, payload_address + PFM_SIG_BLOCK_SIZE + 4,
 				sizeof(uint8_t), (uint8_t *)&hrot_svn);
 	if (status != Success) {
 		LOG_ERR("Flash read AFM SVN failed");
+		*image_type = 0xffffffff;
 		return Failure;
 	}
 	if (hrot_svn > SVN_MAX) {
-		LOG_ERR("invalid SVN");
+		LOG_ERR("Invalid SVN, hrot_svn = %x", hrot_svn);
 		*image_type = 0xffffffff;
+		LogUpdateFailure(UPD_CAPSULE_INVALID_SVN, 1);
 		return Failure;
 	}
 
 	current_svn = get_ufm_svn(SVN_POLICY_FOR_AFM);
 	if (hrot_svn > current_svn) {
-		if (evt_ctx->data.bit8[1] == AfmRecoveryUpdate) {
+		if (evt_ctx->data.bit8[1] & AfmRecoveryUpdate) {
 			AfmStatus = AFM_ACTIVE_PENDING_UPDATE|AFM_RECOVERY_PENDING_UPDATE;
 			LOG_WRN("go to T-1 stage for updating the AFM regions with incremented SVN");
 			cpld_update_status->Region[AFM_REGION].Recoveryregion = BMC_INTENT2_AFM_SVN_UPDATE;
@@ -1420,8 +1485,15 @@ int validate_afm_update_type(CPLD_STATUS *cpld_update_status, uint32_t *image_ty
 			LogLastPanic(BMC_UPDATE_INTENT);
 			LOG_ERR("the incremented SVN should be updated via recovery AFM update, to reject this request (%d, %d)", hrot_svn, current_svn);
 			*image_type = 0xffffffff;
+			LogUpdateFailure(UPD_CAPSULE_INVALID_SVN, 1);
 			return Failure;
 		}
+	} else if (hrot_svn < current_svn) {
+		LOG_ERR("Invalid SVN number, current=%d verify_svn=%d",
+				current_svn, hrot_svn);
+		*image_type = 0xffffffff;
+		LogUpdateFailure(UPD_CAPSULE_INVALID_SVN, 1);
+		return Failure;
 	}
 	return Success;
 }
@@ -1473,15 +1545,14 @@ void handle_update_requested(void *o)
 		if (evt_ctx->data.bit8[1] & AfmRecoveryUpdate) {
 			update_region |= AfmRecoveryUpdate;
 		}
-		break;
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
 		if (evt_ctx->data.bit8[1] & CPLDUpdate) {
 			update_region |= CPLDUpdate;
 		}
-		break;
 #endif
 		pfr_manifest->update_intent2 = evt_ctx->data.bit8[1];
+		break;
 	default:
 		break;
 	}
@@ -1573,7 +1644,7 @@ void handle_update_requested(void *o)
 									&image_type,
 									evt_ctx_wrap.flash,
 									evt_ctx) != 0) {
-						update_region &= ~AfmActiveUpdate;
+						update_region &= ~AfmActiveAndRecoveryUpdate;
 						ret = Failure;
 						break;
 					}
@@ -1782,19 +1853,21 @@ void do_unprovisioned(void *o)
 		handle_unprovisioned_checkpoint(o);
 #if defined(CONFIG_PFR_MCTP_I3C)
 		if (evt_ctx->data.bit8[1] == PausingExecutionBlock) {
+			if (evt_ctx->data.bit8[0] == BmcCheckpoint) {
 #if !defined(CONFIG_PFR_MCTP_I3C_5_0)
-			switch_i3c_mng_owner(I3C_MNG_OWNER_ROT);
-			mctp_i3c_configure_cpu_i3c_devs();
+				switch_i3c_mng_owner(I3C_MNG_OWNER_ROT);
+				mctp_i3c_configure_cpu_i3c_devs();
 #endif
+			}
 		} else if (evt_ctx->data.bit8[1] == CompletingExecutionBlock) {
 #if defined(CONFIG_PFR_MCTP_I3C_5_0)
 			mctp_i3c_target_intf_init();
 #else
- 			mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
- 					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
+			mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
+					CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
 			mctp_i3c_configure_cpu_i3c_devs();
 #endif
- 		}
+		}
 #endif
 		break;
 	default:
@@ -2012,22 +2085,22 @@ void do_reboot(void *o)
 }
 
 static const struct smf_state state_table[] = {
-	[BOOT] = SMF_CREATE_STATE(NULL, NULL, NULL, NULL),
-	[INIT] = SMF_CREATE_STATE(NULL, do_init, NULL, NULL),
-	[ROT_RECOVERY] = SMF_CREATE_STATE(NULL, do_rot_recovery, NULL, NULL),
-	[TMIN1] = SMF_CREATE_STATE(enter_tmin1, NULL, NULL, NULL),
-	[FIRMWARE_VERIFY] = SMF_CREATE_STATE(NULL, do_verify, NULL, &state_table[TMIN1]),
-	[FIRMWARE_RECOVERY] = SMF_CREATE_STATE(NULL, do_recovery, NULL, &state_table[TMIN1]),
-	[FIRMWARE_UPDATE] = SMF_CREATE_STATE(NULL, do_update, NULL, &state_table[TMIN1]),
-	[TZERO] = SMF_CREATE_STATE(enter_tzero, NULL, exit_tzero, NULL),
-	[UNPROVISIONED] = SMF_CREATE_STATE(NULL, do_unprovisioned, NULL, &state_table[TZERO]),
-	[RUNTIME] = SMF_CREATE_STATE(enter_runtime, do_runtime, exit_runtime, &state_table[TZERO]),
+	[BOOT] = SMF_CREATE_STATE(NULL, NULL, NULL, NULL, NULL),
+	[INIT] = SMF_CREATE_STATE(NULL, do_init, NULL, NULL, NULL),
+	[ROT_RECOVERY] = SMF_CREATE_STATE(NULL, do_rot_recovery, NULL, NULL, NULL),
+	[TMIN1] = SMF_CREATE_STATE(enter_tmin1, NULL, NULL, NULL, NULL),
+	[FIRMWARE_VERIFY] = SMF_CREATE_STATE(NULL, do_verify, NULL, &state_table[TMIN1], NULL),
+	[FIRMWARE_RECOVERY] = SMF_CREATE_STATE(NULL, do_recovery, NULL, &state_table[TMIN1], NULL),
+	[FIRMWARE_UPDATE] = SMF_CREATE_STATE(NULL, do_update, NULL, &state_table[TMIN1], NULL),
+	[TZERO] = SMF_CREATE_STATE(enter_tzero, NULL, exit_tzero, NULL, NULL),
+	[UNPROVISIONED] = SMF_CREATE_STATE(NULL, do_unprovisioned, NULL, &state_table[TZERO], NULL),
+	[RUNTIME] = SMF_CREATE_STATE(enter_runtime, do_runtime, exit_runtime, &state_table[TZERO], NULL),
 #if defined(CONFIG_SEAMLESS_UPDATE)
-	[SEAMLESS_UPDATE] = SMF_CREATE_STATE(NULL, do_seamless_update, NULL, &state_table[TZERO]),
-	[SEAMLESS_VERIFY] = SMF_CREATE_STATE(NULL, do_seamless_verify, NULL, &state_table[TZERO]),
+	[SEAMLESS_UPDATE] = SMF_CREATE_STATE(NULL, do_seamless_update, NULL, &state_table[TZERO], NULL),
+	[SEAMLESS_VERIFY] = SMF_CREATE_STATE(NULL, do_seamless_verify, NULL, &state_table[TZERO], NULL),
 #endif
-	[SYSTEM_LOCKDOWN] = SMF_CREATE_STATE(NULL, do_lockdown, NULL, &state_table[TMIN1]),
-	[SYSTEM_REBOOT] = SMF_CREATE_STATE(NULL, do_reboot, NULL, NULL),
+	[SYSTEM_LOCKDOWN] = SMF_CREATE_STATE(NULL, do_lockdown, NULL, &state_table[TMIN1], NULL),
+	[SYSTEM_REBOOT] = SMF_CREATE_STATE(NULL, do_reboot, NULL, NULL, NULL),
 };
 
 void AspeedStateMachine(void)
@@ -2137,6 +2210,7 @@ void AspeedStateMachine(void)
 		} else if (current_state == &state_table[RUNTIME]) {
 			switch (fifo_in->event) {
 			case RESET_DETECTED:
+				set_secure_connection_state(false);
 #if defined(CONFIG_PIT_PROTECTION)
 			case SEAL_FIRMWARE:
 #endif
@@ -2220,6 +2294,22 @@ void AspeedStateMachine(void)
 				}
 				break;
 #endif
+#if defined(CONFIG_PFR_MCTP_I3C)
+			case BMC_RESET_COMM_REQUESTED:
+#if defined(CONFIG_PFR_MCTP_I3C_5_0)
+				mctp_i3c_target_mctp_stop();
+				mctp_i3c_target_intf_init();
+#else
+				if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
+							CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
+					LOG_WRN("Failed to detach BMC's i3c target device");
+				else
+					LOG_INF("BMC's I3C target device detached");
+				mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
+						CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
+#endif
+				break;
+#endif
 			default:
 				break;
 			}
@@ -2241,11 +2331,28 @@ void AspeedStateMachine(void)
 #endif
 			case RESET_DETECTED:
 				reset_from_unprovision_state = true;
+				set_secure_connection_state(false);
 #if defined(CONFIG_PIT_PROTECTION)
 			case SEAL_FIRMWARE:
 #endif
 				next_state = &state_table[FIRMWARE_VERIFY];
 				break;
+#if defined(CONFIG_PFR_MCTP_I3C)
+			case BMC_RESET_COMM_REQUESTED:
+#if defined(CONFIG_PFR_MCTP_I3C_5_0)
+				mctp_i3c_target_mctp_stop();
+				mctp_i3c_target_intf_init();
+#else
+				if (mctp_i3c_detach_slave_dev(CONFIG_PFR_SPDM_I3C_BUS,
+							CONFIG_PFR_SPDM_I3C_BMC_DEV_PID))
+					LOG_WRN("Failed to detach BMC's i3c target device");
+				else
+					LOG_INF("BMC's I3C target device detached");
+				mctp_i3c_attach_target_dev(CONFIG_PFR_SPDM_I3C_BUS,
+						CONFIG_PFR_SPDM_I3C_BMC_DEV_PID);
+#endif
+				break;
+#endif
 			default:
 				break;
 			}

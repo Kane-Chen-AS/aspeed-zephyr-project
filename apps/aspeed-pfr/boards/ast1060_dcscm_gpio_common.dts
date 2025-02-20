@@ -27,6 +27,7 @@
 	aliases {
 		fp-input0 = &bmc_fp_green_led_in;
 		fp-input1 = &bmc_fp_amber_led_in;
+		fp-input2 = &bmc_fp_id_led_in;
 	};
 
 	gpio_keys {
@@ -39,6 +40,11 @@
 		bmc_fp_amber_led_in: fp_amber_led_in {
 			gpios = <&gpio0_a_d 21 1>; /* GPIO_C5 */
 			label = "BMC FP AMBER LED";
+		};
+
+		bmc_fp_id_led_in: fp_id_led_in {
+			gpios = <&gpio0_a_d 8 1>; /* GPIO_B0 */
+			label = "BMC FP ID LED";
 		};
 	};
 
@@ -53,6 +59,11 @@
 		pfr_fp_amber_led_out: amber_led {
 			gpios = <&gpio0_e_h 25 1>; /* GPIO_H1 */
 			label = "PFR_FP_AMBER_LED";
+		};
+
+		pfr_fp_id_led_out: id_led {
+			gpios = <&gpio0_e_h 24 1>; /* GPIO_H0 */
+			label = "PFR_FP_ID_LED";
 		};
 
 		pfr_hb_led_out: hb_led {

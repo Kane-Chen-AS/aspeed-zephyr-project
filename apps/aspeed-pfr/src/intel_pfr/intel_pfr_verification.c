@@ -240,11 +240,11 @@ int validate_pc_type(struct pfr_manifest *manifest)
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 #if (CONFIG_AFM_SPEC_VERSION == 4)
 	else if (manifest->pc_type == PFR_AFM)
-		return (manifest->update_intent2 & AfmActiveUpdate) ? Success : Failure;
+		return (manifest->update_intent2 & AfmActiveAndRecoveryUpdate) ? Success : Failure;
 	else if (manifest->pc_type == PFR_AFM_PER_DEV)
-		return (manifest->update_intent2 & AfmRecoveryUpdate) ? Success : Failure;
+		return (manifest->update_intent2 & AfmActiveAndRecoveryUpdate) ? Success : Failure;
 	else if (manifest->pc_type == PFR_AFM_ADD_TO_UPDATE)
-		return (manifest->update_intent2 & AfmActiveAddToUpdate) ? Success : Failure;
+		return (manifest->update_intent2 & AfmActiveAndRecoveryUpdate) ? Success : Failure;
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
 	else if (manifest->pc_type == PFR_AFM)
 		return (manifest->update_intent2 & AfmActiveAndRecoveryUpdate) ? Success : Failure;
@@ -999,6 +999,10 @@ int intel_cfms_verify(struct pfr_manifest *manifest)
 	CPLD_ADDR_DEF_STRUCTURE cpld_addr_def;
 	CFM_STRUCTURE cfm_header;
 	int offset = PFM_SIG_BLOCK_SIZE;
+	uint8_t board_id = intel_rsu_get_scm_board_id();
+	uint8_t rsu_count = (board_id == SCM_BOARD_ID_DEFAULT) ? MAX_RSU_TYPE : (MAX_RSU_TYPE - 1);
+	uint8_t rsu_type;
+
 	if (manifest->hash_curve == hash_sign_algo384 || manifest->hash_curve == hash_sign_algo256) {
 		pfm_sig_offset = cap_base_address + LMS_PFM_SIG_BLOCK_SIZE;
 		pfm_offset = pfm_sig_offset + LMS_PFM_SIG_BLOCK_SIZE;
@@ -1031,6 +1035,10 @@ int intel_cfms_verify(struct pfr_manifest *manifest)
 	SetIntelCpldActiveMajorVersion(major_ver);
 	SetIntelCpldActiveMinorVersion(minor_ver);
 
+	for (rsu_type = 0; rsu_type < rsu_count; rsu_type++) {
+		manifest->intel_cpld_addr[rsu_type] = 0;
+		manifest->intel_cpld_img_size[rsu_type] = 0;
+	}
 	pfm_body_end_addr = pfm_body_offset + pfm_header.Length - sizeof(CPLD_PFM_STRUCTURE);
 	while(pfm_body_offset < pfm_body_end_addr) {
 		pfr_spi_read(image_type, pfm_body_offset, sizeof(CPLD_ADDR_DEF_STRUCTURE),

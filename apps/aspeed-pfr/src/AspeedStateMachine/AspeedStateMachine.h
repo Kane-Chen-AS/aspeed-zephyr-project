@@ -59,6 +59,7 @@ enum aspeed_pfr_event {
 	ATTESTATION_FAILED,
 #endif
 	HANDSHAKE_FAILED,
+	BMC_RESET_COMM_REQUESTED,
 };
 
 enum OPERATIONS {
@@ -108,6 +109,7 @@ typedef struct _AO_DATA {
 			unsigned int BootPlatform : 1;
 			unsigned int ProcessNewCommand : 1;
 			unsigned int processOnce : 1;
+			unsigned int InternalAFMStatus : 1;
 		};
 		unsigned int flag;
 	};

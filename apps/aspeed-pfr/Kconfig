@@ -199,7 +199,6 @@ config LMS_SIGN_SERIAL_OFFSET
 
 config OTP_SIM
 	depends on !OTP_ASPEED
-	depends on !PFR_SPDM_ATTESTATION
 	default n
 	bool "Simulate OTP"
 	help
@@ -224,6 +223,12 @@ config OTP_KEY_RETIRE
 	bool "Retire key in OTP"
 	help
 	  Retire previous key after new owner's key is added in OTP.
+
+config SECURE_LOCK_MODE
+	default 0
+	int "lock mode for secure connection, 0:disbale, 1:loose mode, 2:restrict mode"
+	help
+	  loose mode means to block the non-secure connection when provision mode is locked, restrict mode means to block the non-secure connection when provision data is presented
 
 rsource "Kconfig.spdm"
 rsource "Kconfig.rsu"

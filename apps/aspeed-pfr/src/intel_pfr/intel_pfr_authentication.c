@@ -21,48 +21,38 @@ LOG_MODULE_DECLARE(pfr, CONFIG_LOG_DEFAULT_LEVEL);
 int pfr_recovery_verify(struct pfr_manifest *manifest)
 {
 	int status = 0;
-	uint32_t read_address;
-#if defined(CONFIG_PFR_SPDM_ATTESTATION)
-	bool verify_afm = false;
-#endif
+	uint32_t read_address = 0;
 
 	LOG_INF("Verify recovery");
 
 	// Recovery region verification
-	if (manifest->image_type == BMC_TYPE) {
+	switch (manifest->image_type) {
+	case BMC_TYPE:
 		ufm_read(PROVISION_UFM, BMC_RECOVERY_REGION_OFFSET, (uint8_t *)&read_address,
 				sizeof(read_address));
-	} else if (manifest->image_type == PCH_TYPE) {
+		break;
+	case PCH_TYPE:
 		ufm_read(PROVISION_UFM, PCH_RECOVERY_REGION_OFFSET, (uint8_t *)&read_address,
 				sizeof(read_address));
-	}
+		break;
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 #if (CONFIG_AFM_SPEC_VERSION == 4)
-	else if (manifest->image_type == ROT_EXT_AFM_RC_1) {
-		read_address = 0;
-		//manifest->image_type = ROT_EXT_AFM_RC_1;
-		verify_afm = true;
-	}
-	else if (manifest->image_type == ROT_EXT_AFM_RC_2) {
-		read_address = 0;
-		//manifest->image_type = ROT_EXT_AFM_RC_2;
-		verify_afm = true;
-	}
+	case ROT_EXT_AFM_RC_1:
+	case ROT_EXT_AFM_RC_2:
+		break;
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
-	else if (manifest->image_type == AFM_TYPE) {
+	case AFM_TYPE:
 		read_address = CONFIG_BMC_AFM_RECOVERY_OFFSET;
 		manifest->image_type = BMC_TYPE;
-		verify_afm = true;
-	}
+		break;
 #endif
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
-	else if (manifest->image_type == CPLD_TYPE) {
+	case CPLD_TYPE:
 		manifest->image_type = ROT_EXT_CPLD_RC;
-		read_address = 0;
-	}
+		break;
 #endif
-	else {
+	default:
 		LOG_ERR("Incorrect manifest image_type");
 		return Failure;
 	}
@@ -107,36 +97,31 @@ int pfr_recovery_verify(struct pfr_manifest *manifest)
 int pfr_active_verify(struct pfr_manifest *manifest)
 {
 	int status = 0;
-	uint32_t read_address;
+	uint32_t read_address = 0;
 
-	if (manifest->image_type == BMC_TYPE) {
+	switch (manifest->image_type) {
+	case BMC_TYPE:
 		get_provision_data_in_flash(BMC_ACTIVE_PFM_OFFSET, (uint8_t *)&read_address,
 				sizeof(read_address));
-	} else if (manifest->image_type == PCH_TYPE) {
+		break;
+	case PCH_TYPE:
 		get_provision_data_in_flash(PCH_ACTIVE_PFM_OFFSET, (uint8_t *)&read_address,
 				sizeof(read_address));
-	}
+		break;
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
 #if (CONFIG_AFM_SPEC_VERSION == 4)
-	else if (manifest->image_type == ROT_EXT_AFM_ACT_1) {
-		/* Fixed partition so starts from zero */
-		read_address = 0;
-	}
-	else if (manifest->image_type == ROT_EXT_AFM_ACT_2) {
-		/* Fixed partition so starts from zero */
-		read_address = 0;
-	}
+	case ROT_EXT_AFM_ACT_1:
+	case ROT_EXT_AFM_ACT_2:
+	case ROT_INTERNAL_AFM:
+		break;
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
-	else if (manifest->image_type == ROT_INTERNAL_AFM) {
-		/* Fixed partition so starts from zero */
-		read_address = 0;
-	}
+	case ROT_INTERNAL_AFM:
+		break;
 #endif
 #endif
 #if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
-	else if (manifest->image_type == CPLD_TYPE) {
+	case CPLD_TYPE:
 		manifest->image_type = ROT_EXT_CPLD_ACT;
-		read_address = 0;
 		manifest->address = read_address;
 		LOG_INF("Verifying capsule signature, address=0x%08x", manifest->address);
 		if (manifest->pfr_authentication->online_update_cap_verify(manifest)) {
@@ -145,19 +130,46 @@ int pfr_active_verify(struct pfr_manifest *manifest)
 		}
 		LOG_INF("Verify CPLD active region success");
 		return Success;
-	}
 #endif
-	else {
+	default:
 		LOG_ERR("Unsupported image type %d", manifest->image_type);
 		return Failure;
 	}
+
 	manifest->address = read_address;
 
 	LOG_INF("Active Firmware Verification");
 	LOG_INF("Verifying PFM signature, address=0x%08x", manifest->address);
-	status = manifest->base->verify((struct manifest *)manifest, manifest->hash,
-			manifest->verification->base, manifest->pfr_hash->hash_out,
-			manifest->pfr_hash->length);
+
+	switch (manifest->image_type) {
+	case BMC_TYPE:
+	case PCH_TYPE:
+#if defined(CONFIG_INTEL_PFR_CPLD_UPDATE)
+	case CPLD_TYPE:
+#endif
+		status = manifest->base->verify((struct manifest *)manifest, manifest->hash,
+				manifest->verification->base, manifest->pfr_hash->hash_out,
+				manifest->pfr_hash->length);
+		break;
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+#if (CONFIG_AFM_SPEC_VERSION == 4)
+	case ROT_EXT_AFM_ACT_1:
+	case ROT_EXT_AFM_ACT_2:
+		status = verify_afm_devices(manifest);
+		break;
+	case ROT_INTERNAL_AFM:
+		if (verify_internal_afm(manifest, BMC_SPI) ||
+			verify_internal_afm(manifest, PCH_SPI))
+			return Failure;
+
+		return Success;
+#elif (CONFIG_AFM_SPEC_VERSION == 3)
+	case ROT_INTERNAL_AFM:
+		status = verify_afm_devices(manifest);
+		break;
+#endif
+#endif
+	}
 	if (status != Success) {
 		LOG_ERR("Verify active PFM failed");
 		return Failure;

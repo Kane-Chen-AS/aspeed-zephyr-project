@@ -33,6 +33,7 @@ int spdm_handle_get_digests(void *ctx, void *req, void *rsp)
 	rsp_msg->header.param2 = context->local.certificate.slot_mask;
 
 	uint8_t slot_mask, cert_count = 0;
+
 	slot_mask = context->local.certificate.slot_mask;
 	while (slot_mask) {
 		cert_count++;
@@ -56,6 +57,7 @@ int spdm_handle_get_digests(void *ctx, void *req, void *rsp)
 			//           certificate. The last certificate is the leaf certificate.
 			//           This field is big endian.
 			uint8_t hash[48];
+
 			mbedtls_sha512(context->local.certificate.certs[cert_count].data,
 					context->local.certificate.certs[cert_count].size,
 					hash,

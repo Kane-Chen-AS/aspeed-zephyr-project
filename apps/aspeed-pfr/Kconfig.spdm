@@ -33,15 +33,26 @@ config PFR_SPDM_RESPONDER
 	default n
 	bool "SPDM responder support"
 
+config SECURE_CONNECTION_RESPONDER
+	depends on PFR_SPDM_RESPONDER
+	default n
+	bool "SPDM secure responder support"
+
+config SECURE_CONNECTION_REQUESTER
+	depends on PFR_MCTP
+	default n
+	bool "SPDM secure requester support"
+
+config PFR_HEARTBEAT_PERIOD
+	default 60
+	range 0 255
+	int "Period of heartbeat in seconds"
+
 if PFR_SPDM_ATTESTATION
 
 config BMC_AFM_RECOVERY_OFFSET
 	default 0x0c300000
 	hex "AFM recovery region offset in BMC flash"
-
-config BMC_AFM_STAGING_OFFSET
-	default 0x0c2e0000
-	hex "AFM staging region offset in BMC flash"
 
 config BMC_AFM_STAGING_RECOVERY_SIZE
 	default 0x20000
@@ -76,7 +87,7 @@ config PFR_SPDM_I3C_BMC_DEV_PID
 	hex "I3C device pid for BMC"
 
 config PFR_SPDM_I3C_HUB_DEV_PID
-	default 0x4cd7515a106
+	default 0x4cdffffffff
 	hex "I3C device pid for i3c hub"
 
 config PFR_SPDM_I3C_CPU0_DEV_PID

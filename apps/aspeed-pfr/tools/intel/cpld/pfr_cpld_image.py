@@ -193,8 +193,8 @@ class cfm_ad_stuct(ctypes.LittleEndianStructure):
                 ('image_start_offset', ctypes.c_uint)]
 
     def __init__(self, fw_type, length, image_start_offset):
-        # CPLD FM definition type: 0x3 - PFM SPI region address/offset definition
-        self.fm_def_type = 0x3
+        # CPLD FM definition type: 0x4 - PFM SPI region address/offset definition
+        self.fm_def_type = 0x4
         self.fw_type = fw_type
         self.length = length
         self.image_start_offset = image_start_offset

@@ -222,6 +222,12 @@ int pfr_staging_pch_staging(struct pfr_manifest *manifest)
 		return Failure;
 	}
 
+	if ((image_header.image_length + CSK_PUB_KEY_SIZE) > CONFIG_PCH_STAGING_SIZE) {
+		LOG_ERR("Image size %x is bigger than staging size %x",
+			image_header.image_length + CSK_PUB_KEY_SIZE, CONFIG_PCH_STAGING_SIZE);
+		return Failure;
+	}
+
 	status = cerberus_pfr_verify_image(manifest);
 	if (status != Success) {
 		LOG_ERR("BMC's PCH Stage Image Verify Failed");

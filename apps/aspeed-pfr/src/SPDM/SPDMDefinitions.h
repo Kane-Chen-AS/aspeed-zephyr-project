@@ -25,21 +25,21 @@
 
 /* SPDM CAPABILITIES */
 #define SPDM_CACHE_CAP			(BIT(0) << 0)
-#define SPDM_CERT_CAP 			(BIT(1) << 0)
-#define SPDM_CHAL_CAP 			(BIT(2) << 0)
+#define SPDM_CERT_CAP			(BIT(1) << 0)
+#define SPDM_CHAL_CAP			(BIT(2) << 0)
 #define SPDM_MEAS_CAP_NO_SIG		(BIT(3) << 0)
 #define SPDM_MEAS_CAP_SIG		(BIT(4) << 0)
-#define SPDM_ENCRYPT_CAP 		(BIT(6) << 0)
-#define SPDM_MAC_CAP 			(BIT(7) << 0)
-#define SPDM_MUT_AUTH_CAP 		(BIT(0) << 8)
-#define SPDM_KEY_EX_CAP 		(BIT(1) << 8)
-#define SPDM_PSK_CAP 			(BIT(2) << 8)
-#define SPDM_ENCAP_CAP 			(BIT(4) << 8)
-#define SPDM_HBEAT_CAP 			(BIT(5) << 8)
-#define SPDM_KEY_UPD_CAP 		(BIT(6) << 8)
+#define SPDM_ENCRYPT_CAP		(BIT(6) << 0)
+#define SPDM_MAC_CAP			(BIT(7) << 0)
+#define SPDM_MUT_AUTH_CAP		(BIT(0) << 8)
+#define SPDM_KEY_EX_CAP			(BIT(1) << 8)
+#define SPDM_PSK_CAP			(BIT(2) << 8)
+#define SPDM_ENCAP_CAP			(BIT(4) << 8)
+#define SPDM_HBEAT_CAP			(BIT(5) << 8)
+#define SPDM_KEY_UPD_CAP		(BIT(6) << 8)
 #define SPDM_HANDSHAKE_IN_THE_CLEAR_CAP	(BIT(7) << 8)
-#define SPDM_PUB_KEY_ID_CAP 		(BIT(0) << 16)
-#define SPDM_CHUNK_CAP 			(BIT(1) << 16)
+#define SPDM_PUB_KEY_ID_CAP		(BIT(0) << 16)
+#define SPDM_CHUNK_CAP			(BIT(1) << 16)
 
 /* SPDM ALGORHTMS */
 #define SPDM_EXT_ASYM_SEL_COUNT 1
@@ -84,15 +84,74 @@
 #define SPDM_MEASUREMENT_BLOCK_DMTF_TYPE_MUTABLE_FIRMWARE 0x01
 #define SPDM_MEASUREMENT_BLOCK_DMTF_TYPE_HARDWARE_CONFIG 0x02
 #define SPDM_MEASUREMENT_BLOCK_DMTF_TYPE_FIRMWARE_CONFIG 0x03
+#define SPDM_MEASUREMENT_BLOCK_DMTF_TYPE_MANIFEST 0x4
+#define SPDM_MEASUREMENT_BLOCK_DMTF_TYPE_DEVICE_MODE 0x5
+
+#define SPDM_MEASUREMENT_BLOCK_DMTF_TYPE_RAW_STREAM 0x80
 
 #define SPDM_MEASUREMENT_OPERATION_TOTAL_NUMBER 0x00
+#define SPDM_MEASUREMENT_OPERATION_MANIFEST 0xFD
+#define SPDM_MEASUREMENT_OPERATION_DEVICE_MODE 0xFE
 #define SPDM_MEASUREMENT_OPERATION_ALL_MEASUREMENTS 0xFF
 
 /* SPDM Version String */
 #define SPDM_PREFIX_VERSION_12 "dmtf-spdm-v1.2.*dmtf-spdm-v1.2.*dmtf-spdm-v1.2.*dmtf-spdm-v1.2.*"
+/* Table 90 - Version Details */
+#define SPDM_VERSION_DETAIL_11 "spdm1.1 "
+#define SPDM_VERSION_DETAIL_12 "spdm1.2 "
+
+#define SPDM_BIN_LABEL_STR_0 "derived"
+#define SPDM_BIN_LABEL_STR_1 "req hs data"
+#define SPDM_BIN_LABEL_STR_2 "rsp hs data"
+#define SPDM_BIN_LABEL_STR_3 "req app data"
+#define SPDM_BIN_LABEL_STR_4 "rsp app data"
+#define SPDM_BIN_LABEL_STR_5 "key"
+#define SPDM_BIN_LABEL_STR_6 "iv"
+#define SPDM_BIN_LABEL_STR_7 "finished"
+#define SPDM_BIN_LABEL_STR_8 "exp master"
+#define SPDM_BIN_LABEL_STR_9 "traffic upd"
+
+#define SPDM_LABEL_MSG_LEN_0 0x30
+#define SPDM_LABEL_MSG_LEN_1 0x30
+#define SPDM_LABEL_MSG_LEN_2 0x30
+#define SPDM_LABEL_MSG_LEN_3 0x30
+#define SPDM_LABEL_MSG_LEN_4 0x30
+#define SPDM_LABEL_MSG_LEN_5 0x20
+#define SPDM_LABEL_MSG_LEN_6 0xc
+#define SPDM_LABEL_MSG_LEN_7 0x30
+#define SPDM_LABEL_MSG_LEN_8 0x30
+#define SPDM_LABEL_MSG_LEN_9 0x30
+
+#define SPDM_MAX_RAND_COUNT 32
+
+#define SPDM_RESPONSE_MODE 0
+#define SPDM_REQUEST_MODE 1
+
+#define SPDM_HEARTBEAT_PERIOD CONFIG_PFR_HEARTBEAT_PERIOD
+
+/* To support Mutual Authentication Mode, 4 is requested with digest request */
+#define SPDM_MUT_AUTH_MODE 0x4
+
+#define GENERAL_OPAQUE_DATA_MODE 0x2
+/*
+ * user can enable SPDM_SECURE_CONNECTION_DEBUG and CONFIG_LOG_MODE_IMMEDIATE at the same time.
+ * thus, debug message output can be more efficient
+ */
+#define SPDM_SECURE_CONNECTION_DEBUG 0
+#if SPDM_SECURE_CONNECTION_DEBUG
+#define SPDM_DBG_LOG(a, ...) LOG_INF(a, __VA_ARGS__)
+#define SPDM_DBG_HEXDUMP(a, b, c) spdm_hexdump_helper(a, b, c)
+#else
+#define SPDM_DBG_LOG(a, ...) do { } while (0)
+#define SPDM_DBG_HEXDUMP(a, b, c) do { } while (0)
+#endif
+/* In order to avoid log system hung easily to split a large hex data to be smaller pieces */
+#define SPDM_HEXDUMP_SIZE 96
 
 /* Signature Generation Context */
 #define SPDM_SIGN_CONTEXT_M1M2_RSP "responder-challenge_auth signing"
 #define SPDM_SIGN_CONTEXT_M1M2_REQ "requester-challenge_auth signing"
 #define SPDM_SIGN_CONTEXT_L1L2_RSP "responder-measurements signing"
 #define SPDM_SIGN_CONTEXT_L1L2_REQ "responder-measurements signing"
+#define SPDM_SIGN_CONTEXT_KEY_EXCHANGE_RSP "responder-key_exchange_rsp signing"
+#define SPDM_SIGN_CONTEXT_FINISH_REQ "requester-finish signing"

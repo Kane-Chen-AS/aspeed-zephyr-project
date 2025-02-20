@@ -15,11 +15,15 @@
 #define MCTP_ERROR 1
 
 #define MCTP_TX_QUEUE_SIZE 16
-#define MCTP_RX_TASK_STACK_SIZE 2048
+#define MCTP_RX_TASK_STACK_SIZE 3072
 #define MCTP_TX_TASK_STACK_SIZE 2048
 #define MCTP_TASK_NAME_LEN 32
 
-#define MCTP_I3C_STATE_HANDLER_STACK_SIZE    4096
+#define MCTP_I3C_STATE_HANDLER_STACK_SIZE    1024
+
+#define MCTP_I3C_CPU0_EID                   0x1D
+#define MCTP_I3C_CPU1_EID                   0x9D
+#define MCTP_I3C_REGISTRATION_EID           0x1D
 
 typedef enum {
 	MCTP_MEDIUM_TYPE_UNKNOWN = 0,
@@ -51,7 +55,7 @@ typedef uint16_t (*medium_rx)(void *mctp_p, void *msg_p);
 typedef struct _mctp_i3c_conf {
 	uint8_t bus;
 	uint8_t addr;
-	uint8_t dummy;
+	uint8_t dest_eid;
 } mctp_i3c_conf;
 
 /* smbus config for mctp medium_conf */

@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: MIT
  */
-#include <zephyr/random/rand32.h>
+#include <zephyr/random/random.h>
 
 #include "intel_pfr/intel_pfr_pfm_manifest.h"
 #include "SPDM/SPDMCommon.h"
@@ -13,16 +13,17 @@ LOG_MODULE_DECLARE(spdm_req, CONFIG_LOG_DEFAULT_LEVEL);
 int spdm_get_measurements(void *ctx,
 		uint8_t request_attribute, uint8_t measurement_operation,
 		uint8_t *number_of_blocks,
-		void *possible_measure)
+		void *possible_measure, uint32_t session_id)
 {
 	struct spdm_context *context = (struct spdm_context *)ctx;
 	struct spdm_message req_msg, rsp_msg;
-	int ret = 0;
+	int ret = SPDM_MEASUREMENT_RESULT_OK;
 #if (CONFIG_AFM_SPEC_VERSION == 4)
-	AFM_DEVICE_MEASUREMENT_VALUE_v40 *possible_measurement = possible_measure;
+	AFM_DEVICE_MEASUREMENT_VALUE_v40 * possible_measurement = possible_measure;
 #elif (CONFIG_AFM_SPEC_VERSION == 3)
-	AFM_DEVICE_MEASUREMENT_VALUE *possible_measurement = possible_measure;
+	AFM_DEVICE_MEASUREMENT_VALUE * possible_measurement = possible_measure;
 #endif
+	struct spdm_session_context *session = NULL;
 
 	req_msg.header.spdm_version = context->local.version.version_number_selected;
 	req_msg.header.request_response_code = SPDM_REQ_GET_MEASUREMENTS;
@@ -37,39 +38,43 @@ int spdm_get_measurements(void *ctx,
 		spdm_buffer_append_nonce(&req_msg.buffer);
 
 		// SPDM 1.2 Requested Slot ID
-		if (req_msg.header.spdm_version == SPDM_VERSION_12) {
+		if (req_msg.header.spdm_version == SPDM_VERSION_12)
 			spdm_buffer_append_u8(&req_msg.buffer, 0x01);
-		}
 	}
 
-
-	ret = spdm_send_request(context, &req_msg, &rsp_msg);
+#if defined(CONFIG_SECURE_CONNECTION_REQUESTER)
+	session = spdm_session_get(session_id);
+#endif
+	if (session)
+		ret = spdm_send_request_enc(context, &req_msg, &rsp_msg, session_id);
+	else
+		ret = spdm_send_request(context, &req_msg, &rsp_msg);
 
 	if (ret != 0) {
 		LOG_ERR("GET_MEASUREMENTS failed %x", ret);
-		ret = -3;
+		ret = SPDM_MEASUREMENT_RESULT_GET_FAILED;
 		goto cleanup;
 	} else if (rsp_msg.header.spdm_version != req_msg.header.spdm_version) {
 		LOG_ERR("Unsupported header SPDM_VERSION Req %x Rsp %x",
 				req_msg.header.spdm_version, rsp_msg.header.spdm_version);
-		ret = -1;
+		ret = SPDM_MEASUREMENT_RESULT_NOT_FOUND;
 		goto cleanup;
 	} else if (rsp_msg.header.request_response_code != SPDM_RSP_MEASUREMENTS) {
 		LOG_DBG("GET MEASUREMENTS FAILED Error Code %02x %02x",
 				rsp_msg.header.param1, rsp_msg.header.param2);
-		ret = -1;
+		ret = SPDM_MEASUREMENT_RESULT_NOT_FOUND;
 		goto cleanup;
 	} else if (rsp_msg.buffer.write_ptr < 4) {
 		LOG_ERR("MEASUREMENTS message length incorrect %d", rsp_msg.buffer.write_ptr);
-		ret = -1;
+		ret = SPDM_MEASUREMENT_RESULT_NOT_FOUND;
 		goto cleanup;
 	}
 
-	if (measurement_operation == SPDM_MEASUREMENT_OPERATION_TOTAL_NUMBER) {
+	if (measurement_operation == SPDM_MEASUREMENT_OPERATION_TOTAL_NUMBER)
 		*number_of_blocks = rsp_msg.header.param1;
-	} else if (measurement_operation == SPDM_MEASUREMENT_OPERATION_ALL_MEASUREMENTS) {
+	else if (measurement_operation == SPDM_MEASUREMENT_OPERATION_ALL_MEASUREMENTS)
 		*number_of_blocks = rsp_msg.header.param1;
-	}
+
 
 	LOG_HEXDUMP_DBG(&rsp_msg.header, 4, "MEASUREMENTS Header:");
 	LOG_HEXDUMP_DBG(rsp_msg.buffer.data, rsp_msg.buffer.size, "MEASUREMENTS:");
@@ -80,7 +85,7 @@ int spdm_get_measurements(void *ctx,
 	} else if (request_attribute == 0x01) {
 		if (rsp_msg.buffer.write_ptr < 96) {
 			LOG_ERR("MEASUREMENTS message length incorrect %d", rsp_msg.buffer.write_ptr);
-			ret = -1;
+			ret = SPDM_MEASUREMENT_RESULT_NOT_FOUND;
 			goto cleanup;
 		}
 
@@ -99,7 +104,7 @@ int spdm_get_measurements(void *ctx,
 			spdm_context_update_l1l2_hash_buffer(context, &context->message_a);
 		}
 
-		/* DSP0274_1.0.1: 
+		/* DSP0274_1.0.1:
 		 * 310: Public key associated with the slot 0 certificate of the Responder.
 		 */
 		ret = spdm_crypto_verify(context, 0, hash, 48,
@@ -109,7 +114,7 @@ int spdm_get_measurements(void *ctx,
 		LOG_INF("GET_MEASUREMENT SIGNATURE VERIFY ret=%x", -ret);
 		if (ret < 0) {
 			LOG_HEXDUMP_ERR(hash, 48, "Requester L2 hash:");
-			ret = -2;
+			ret = SPDM_MEASUREMENT_RESULT_INVALID_SIG;
 			goto cleanup;
 		}
 
@@ -126,13 +131,12 @@ int spdm_get_measurements(void *ctx,
 		spdm_buffer_get_u8(&rsp_msg.buffer, &number_of_blocks);
 		if (number_of_blocks != 1) {
 			LOG_ERR("number_of_blocks %d", number_of_blocks);
-			ret = -1;
+			ret = SPDM_MEASUREMENT_RESULT_NOT_FOUND;
 			goto cleanup;
 		}
 
 		spdm_buffer_get_u24(&rsp_msg.buffer, &meas_record_len);
 		// TODO: Check total length
-		
 		spdm_buffer_get_u8(&rsp_msg.buffer, &device_meas_index);
 		spdm_buffer_get_u8(&rsp_msg.buffer, &device_meas_spec);
 		spdm_buffer_get_u16(&rsp_msg.buffer, &device_meas_size);
@@ -146,7 +150,7 @@ int spdm_get_measurements(void *ctx,
 			if (device_meas_value_size != possible_measurement->ValueSize) {
 				LOG_ERR("Measurement size mismatch expect %d but got %d",
 						possible_measurement->ValueSize, device_meas_size);
-				ret = -1;
+				ret = SPDM_MEASUREMENT_RESULT_NOT_FOUND;
 				goto cleanup;
 			}
 			uint8_t *meas_value = possible_measurement->Values;
@@ -155,7 +159,7 @@ int spdm_get_measurements(void *ctx,
 			meas_value += possible_measurement->ValueSize * possible_measurement->ValueIndex;
 			if (memcmp(device_meas, meas_value, possible_measurement->ValueSize) == 0) {
 				LOG_DBG("ValueIndex = %d, hit", possible_measurement->ValueIndex);
-				ret = 0;
+				ret = SPDM_MEASUREMENT_RESULT_OK;
 				goto cleanup;
 			} else {
 				LOG_INF("ValueIndex = %d, not hit", possible_measurement->ValueIndex);
@@ -163,18 +167,17 @@ int spdm_get_measurements(void *ctx,
 			}
 #endif
 
-			for (uint8_t i = 0; i<possible_measurement->PossibleMeasurements; ++i) {
+			for (uint8_t i = 0; i < possible_measurement->PossibleMeasurements; ++i) {
 				if (memcmp(device_meas, meas_value, possible_measurement->ValueSize) == 0) {
-					ret = 0;
+					ret = SPDM_MEASUREMENT_RESULT_OK;
 					goto cleanup;
-				} else {
+				} else
 					meas_value += possible_measurement->ValueSize;
-				}
 			}
 
 			// Not matching any measurement.
 			LOG_ERR("Not matching any measurement");
-			ret = -1;
+			ret = SPDM_MEASUREMENT_RESULT_NOT_FOUND;
 		}
 	}
 

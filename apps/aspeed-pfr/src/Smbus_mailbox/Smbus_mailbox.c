@@ -32,6 +32,8 @@
 #include "AspeedStateMachine/AspeedStateMachine.h"
 #include "watchdog_timer/wdt_utils.h"
 #include "watchdog_timer/wdt_handler.h"
+#include "cmd_interface/cmd_channel.h"
+#include "SPDM/Certificates/certificate_utils.h"
 
 LOG_MODULE_REGISTER(mailbox, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -41,11 +43,12 @@ LOG_MODULE_REGISTER(mailbox, CONFIG_LOG_DEFAULT_LEVEL);
 static uint32_t gFailedUpdateAttempts = 0;
 const struct device *gSwMbxDev = NULL;
 
-uint8_t gUfmFifoData[64];
-uint8_t gReadFifoData[64];
+uint8_t gUfmFifoData[SWMBX_WRITE_FIFO_SIZE];
+uint8_t gReadFifoData[SWMBX_READ_FIFO_SIZE];
 uint8_t gRootKeyHash[SHA384_DIGEST_LENGTH];
 uint8_t gPchOffsets[PCH_OFFSET_SIZE];
 uint8_t gBmcOffsets[BMC_OFFSET_SIZE];
+uint8_t gAFMOffset[AFM_OFFSET_SIZE];
 #if defined(CONFIG_PIT_PROTECTION)
 uint8_t gPitPassword[8];
 #endif
@@ -53,8 +56,8 @@ uint8_t gPitPassword[8];
 uint8_t gFifoData = 0;
 uint8_t gProvisionData = 0;
 CPLD_STATUS cpld_update_status;
-
 extern uint8_t gWdtBootStatus;
+uint8_t curr_secure_state = 0xff;
 
 void ResetMailBox(void)
 {
@@ -149,7 +152,7 @@ int set_provision_data_in_flash(uint32_t addr, uint8_t *DataBuffer, uint32_t len
 
 #define SWMBX_NOTIFYEE_STACK_SIZE 1024
 
-#define TOTAL_MBOX_EVENT 12
+#define TOTAL_MBOX_EVENT 13
 
 struct k_thread swmbx_notifyee_thread;
 K_THREAD_STACK_DEFINE(swmbx_notifyee_stack, SWMBX_NOTIFYEE_STACK_SIZE);
@@ -166,9 +169,10 @@ K_SEM_DEFINE(bmc_update_intent2_sem, 0, 1);
 K_SEM_DEFINE(pch_update_intent2_sem, 0, 1);
 K_SEM_DEFINE(bmc_ufm_smbus_ownership_sem, 0, 1);
 K_SEM_DEFINE(pch_ufm_smbus_ownership_sem, 0, 1);
+K_SEM_DEFINE(bmc_i3c_reset_comm_sem, 0, 1);
 
 struct k_mutex write_fifo_mutex;
-
+#if defined(CONFIG_PFR_MCTP)
 int swmbx_mctp_i3c_doe_msg_read_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data)
 {
 	if (data_len > sizeof(gReadFifoData))
@@ -180,8 +184,10 @@ int swmbx_mctp_i3c_doe_msg_read_handler(uint8_t addr, uint8_t data_len, uint8_t 
 				goto error;
 		}
 	} else {
-		if (swmbx_read(gSwMbxDev, false, addr, swmbx_data))
-			goto error;
+		for (int i = 0; i < data_len; i++) {
+			if (swmbx_read(gSwMbxDev, false, addr + i, &swmbx_data[i]))
+				goto error;
+		}
 	}
 
 	return 0;
@@ -191,12 +197,21 @@ error:
 	return -1;
 }
 
-int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data)
+int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data, int channel_id, uint8_t s_eid)
 {
 	int status;
 	union aspeed_event_data data = {0};
+	bool isBMC = false;
 	data.bit8[0] = addr;
 	data.bit8[1] = *swmbx_data;
+
+	if ((channel_id & CMD_CHANNEL_I3C_BASE) == 0) {
+		LOG_ERR("I2C request should not go through this path");
+		return -1;
+	}
+
+	if (s_eid == MCTP_I3C_REGISTRATION_EID)
+		isBMC = true;
 
 	switch(addr) {
 	case UfmCommand:
@@ -210,6 +225,7 @@ int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t
 		GenerateStateMachineEvent(PROVISION_CMD, data.ptr);
 		break;
 	case UfmWriteFIFO:
+		/* ToDo : Intel reference code blocks this operation from BIOS */
 		status = k_mutex_lock(&write_fifo_mutex, K_MSEC(1000));
 		if (status) {
 			LOG_ERR("Get write_fifo_mutex timeout, ret %d", status);
@@ -227,22 +243,74 @@ int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t
 		}
 		break;
 	case BmcCheckpoint:
+		if (isBMC == true) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(WDT_CHECKPOINT, data.ptr);
+		}
+		break;
 	case AcmCheckpoint:
 	case BiosCheckpoint:
-		if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
-			goto error;
-		GenerateStateMachineEvent(WDT_CHECKPOINT, data.ptr);
+		/* ToDo : Intel reference code blocks this operation from BIOS */
+		if (isBMC == false) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(WDT_CHECKPOINT, data.ptr);
+		}
+		break;
+	case PchUpdateIntent:
+		/* ToDo : Intel reference code blocks this operation from BIOS */
+		if (isBMC == false) {
+			// Only Bit[1:0] and Bit[7:6] have R/W access to PCH/CPU. Other bits are
+			// read only.
+			data.bit8[1] &= PchActiveRecoveryDynamicUpdateAtReset;
+			if (swmbx_write(gSwMbxDev, false, PchUpdateIntent, &data.bit8[1]))
+				goto error;
+			if (data.bit8[1] & PchActiveRecoveryDynamicUpdateAtReset)
+				GenerateStateMachineEvent(UPDATE_REQUESTED, data.ptr);
+		}
 		break;
 	case BmcUpdateIntent:
-		if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
-			goto error;
-		GenerateStateMachineEvent(UPDATE_REQUESTED, data.ptr);
+		if (isBMC == true) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(UPDATE_REQUESTED, data.ptr);
+		}
 		break;
 	case BmcUpdateIntent2:
+		if (isBMC == true) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(UPDATE_INTENT_2_REQUESTED, data.ptr);
+		}
+		break;
 	case PchUpdateIntent2:
-		if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
-			goto error;
-		GenerateStateMachineEvent(UPDATE_INTENT_2_REQUESTED, data.ptr);
+		/* ToDo : Intel reference code blocks this operation from BIOS */
+		if (isBMC == false) {
+			if (swmbx_write(gSwMbxDev, false, addr, swmbx_data))
+				goto error;
+			GenerateStateMachineEvent(UPDATE_INTENT_2_REQUESTED, data.ptr);
+		}
+		break;
+	case UfmSmbusOwnership:
+		if (isBMC == true) {
+			// BMC has R/W access to Bit[1:0] and Bit[5].
+			data.bit8[1] &= 0x23;
+			swmbx_write(gSwMbxDev, false, UfmSmbusOwnership, &data.bit8[1]);
+		} else {
+			// PCH/CPU has R/W access to only Bit[1:0]
+			data.bit8[1] &= 0x3;
+			swmbx_write(gSwMbxDev, false, UfmSmbusOwnership, &data.bit8[1]);
+		}
+		break;
+	case BmcResetCommunication:
+		if (isBMC == true) {
+			if (data.bit8[1] == 1)
+				GenerateStateMachineEvent(BMC_RESET_COMM_REQUESTED, data.ptr);
+			data.bit8[1] = 0;
+			if (swmbx_write(gSwMbxDev, false, addr, &data.bit8[1]))
+				goto error;
+		}
 		break;
 	default:
 		LOG_ERR("Unsupported mailbox command");
@@ -255,6 +323,7 @@ error:
 	LOG_ERR("Failed to write mailbox");
 	return -1;
 }
+#endif
 
 void swmbx_notifyee_main(void *a, void *b, void *c)
 {
@@ -272,6 +341,7 @@ void swmbx_notifyee_main(void *a, void *b, void *c)
 	k_poll_event_init(&events[9], K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, &pch_update_intent2_sem);
 	k_poll_event_init(&events[10], K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, &bmc_ufm_smbus_ownership_sem);
 	k_poll_event_init(&events[11], K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, &pch_ufm_smbus_ownership_sem);
+	k_poll_event_init(&events[12], K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY, &bmc_i3c_reset_comm_sem);
 
 	int ret, status;
 
@@ -401,6 +471,14 @@ void swmbx_notifyee_main(void *a, void *b, void *c)
 			// PCH/CPU has R/W access to only Bit[1:0]
 			data.bit8[1] &= 0x3;
 			swmbx_write(gSwMbxDev, false, UfmSmbusOwnership, &data.bit8[1]);
+		} else if (events[12].state == K_POLL_STATE_SEM_AVAILABLE) {
+			k_sem_take(events[12].sem, K_NO_WAIT);
+			data.bit8[0] = BmcResetCommunication;
+			swmbx_get_msg(0, BmcResetCommunication, &data.bit8[1]);
+			if (data.bit8[1] == 1)
+				GenerateStateMachineEvent(BMC_RESET_COMM_REQUESTED, data.ptr);
+			data.bit8[1] = 0;
+			swmbx_write(gSwMbxDev, false, BmcResetCommunication, &data.bit8[1]);
 		}
 
 		for (size_t i = 0; i < TOTAL_MBOX_EVENT; ++i)
@@ -415,7 +493,7 @@ void InitializeSoftwareMailbox(void)
 
 	int status;
 
-	swmbx_dev = device_get_binding("swmbx-ctrl@7e7b0e00");
+	swmbx_dev = device_get_binding("swmbx-ctrl");
 	if (swmbx_dev == NULL) {
 		LOG_ERR("%s: fail to bind %s", __func__, "SWMBX");
 		return;
@@ -432,63 +510,12 @@ void InitializeSoftwareMailbox(void)
 	swmbx_enable_behavior(swmbx_dev, SWMBX_PROTECT | SWMBX_NOTIFY | SWMBX_FIFO, 1);
 
 	/* Register mailbox notification semphore */
-	swmbx_update_fifo(swmbx_dev, &ufm_write_fifo_state_sem, 0, UfmWriteFIFO, 0x40, SWMBX_FIFO_NOTIFY_STOP, true);
-	swmbx_update_fifo(swmbx_dev, &ufm_read_fifo_state_sem, 1, UfmReadFIFO, 0x40, SWMBX_FIFO_NOTIFY_STOP, true);
+	swmbx_update_fifo(swmbx_dev, &ufm_write_fifo_state_sem, 0, UfmWriteFIFO,
+			SWMBX_WRITE_FIFO_SIZE, SWMBX_FIFO_NOTIFY_STOP, true);
+	swmbx_update_fifo(swmbx_dev, &ufm_read_fifo_state_sem, 1, UfmReadFIFO,
+			SWMBX_READ_FIFO_SIZE, SWMBX_FIFO_NOTIFY_STOP, true);
 
-	/* swmbx_update_notify(dev, port, sem, addr, enable) */
-	/* From BMC */
-	swmbx_update_notify(swmbx_dev, 0x0, &ufm_write_fifo_data_sem, UfmWriteFIFO, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &ufm_provision_trigger_sem, UfmCmdTriggerValue, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &bmc_update_intent_sem, BmcUpdateIntent, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &bmc_checkpoint_sem, BmcCheckpoint, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &bmc_update_intent2_sem,
-			BmcUpdateIntent2, true);
-	swmbx_update_notify(swmbx_dev, 0x0, &bmc_ufm_smbus_ownership_sem, UfmSmbusOwnership, true);
-
-	/* From PCH */
-	swmbx_update_notify(swmbx_dev, 0x1, &ufm_write_fifo_data_sem, UfmWriteFIFO, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &ufm_provision_trigger_sem, UfmCmdTriggerValue, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &pch_update_intent_sem, PchUpdateIntent, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &acm_checkpoint_sem, AcmCheckpoint, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &bios_checkpoint_sem, BiosCheckpoint, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &pch_update_intent2_sem, PchUpdateIntent2, true);
-	swmbx_update_notify(swmbx_dev, 0x1, &pch_ufm_smbus_ownership_sem, UfmSmbusOwnership, true);
-
-	/* Protect bit:
-	 * 0 means readable/writable
-	 * 1 means read-only
-	 *
-	 * Port and access_control[]:
-	 * 0 for BMC
-	 * 1 for PCH
-	 */
-	uint32_t access_control[2][8] = {
-		/* BMC */
-		{
-			0xfff704ff, // 1fh ~ 00h
-			0xffffffff, // 3fh ~ 20h CPLD RoT Hash
-			0xffffffff, // 5fh ~ 40h CPLD RoT Hash
-			0xfffffff2, // 7fh ~ 60h
-			0xffffffff, // 9fh ~ 80h ACM/BIOS Scrachpad
-			0xffffffff, // bfh ~ a0h ACM/BIOS Scrachpad
-			0x00000000, // dfh ~ c0h BMC scrachpad
-			0x00000000, // ffh ~ e0h BMC scrachpad
-		},
-		/* PCH */
-		{
-			0xfff884ff, // 1fh ~ 00h
-			0xffffffff, // 3fh ~ 20h CPLD RoT Hash
-			0xffffffff, // 5fh ~ 40h CPLD RoT Hash
-			0xfffffff5, // 7fh ~ 60h
-			0x00000000, // 9fh ~ 80h ACM/BIOS Scrachpad
-			0x00000000, // bfh ~ a0h ACM/BIOS Scrachpad
-			0xffffffff, // dfh ~ c0h BMC scrachpad
-			0xffffffff, // ffh ~ e0h BMC scrachpad
-		},
-	};
-	swmbx_apply_protect(swmbx_dev, 0, access_control[0], 0, 8);
-	swmbx_apply_protect(swmbx_dev, 1, access_control[1], 0, 8);
-
+	set_secure_connection_state(false);
 	/* Register slave device to bus device */
 	const struct device *dev = NULL;
 
@@ -629,16 +656,20 @@ MBX_REG_SETTER_GETTER(PfrActivityInfo2);
 #define LED_DEVICE "leds"
 #define FP_GREEN_LED DT_NODE_CHILD_IDX(DT_NODELABEL(pfr_fp_green_led_out))
 #define FP_AMBER_LED DT_NODE_CHILD_IDX(DT_NODELABEL(pfr_fp_amber_led_out))
+#define FP_ID_LED    DT_NODE_CHILD_IDX(DT_NODELABEL(pfr_fp_id_led_out))
 
 static const struct device *led_dev = NULL;
 static const struct gpio_dt_spec bmc_fp_green = GPIO_DT_SPEC_GET(DT_ALIAS(fp_input0), gpios);
 static const struct gpio_dt_spec bmc_fp_amber = GPIO_DT_SPEC_GET(DT_ALIAS(fp_input1), gpios);
+static const struct gpio_dt_spec bmc_fp_id = GPIO_DT_SPEC_GET(DT_ALIAS(fp_input2), gpios);
 static bool fp_green_on;
 static bool fp_amber_on;
+static bool fp_id_on;
 static bool bypass_bmc_fp_signal;
 
 static struct gpio_callback bmc_fp_green_cb_data;
 static struct gpio_callback bmc_fp_amber_cb_data;
+static struct gpio_callback bmc_fp_id_cb_data;
 
 void fp_amber_led_ctrl_callback(struct k_timer *timer_id)
 {
@@ -657,6 +688,8 @@ void bmc_fp_led_handler(const struct device *dev, struct gpio_callback *cb, uint
 		led_id = FP_GREEN_LED;
 	else if (gpio_pin == bmc_fp_amber.pin)
 		led_id = FP_AMBER_LED;
+	else if (gpio_pin == bmc_fp_id.pin)
+		led_id = FP_ID_LED;
 	else
 		return;
 
@@ -669,8 +702,12 @@ void bmc_fp_led_handler(const struct device *dev, struct gpio_callback *cb, uint
 	ret ? led_on(led_dev, led_id) : led_off(led_dev, led_id);
 	if (led_id == FP_GREEN_LED)
 		fp_green_on = (bool)ret;
-	else
+	else if (led_id == FP_AMBER_LED)
 		fp_amber_on = (bool)ret;
+	else if (led_id == FP_ID_LED)
+		fp_id_on = (bool)ret;
+	else
+		LOG_ERR("Unknown LED ID");
 }
 
 void initializeFPLEDs(void)
@@ -681,6 +718,8 @@ void initializeFPLEDs(void)
 	fp_green_on = false;
 	led_off(led_dev, FP_AMBER_LED);
 	fp_amber_on = false;
+	led_off(led_dev, FP_ID_LED);
+	fp_id_on = false;
 
 	// init bmc_fp_green_led
 	if (!device_is_ready(bmc_fp_green.port)) {
@@ -701,6 +740,15 @@ void initializeFPLEDs(void)
 	gpio_pin_interrupt_configure_dt(&bmc_fp_amber, GPIO_INT_EDGE_BOTH);
 	gpio_init_callback(&bmc_fp_amber_cb_data, bmc_fp_led_handler, BIT(bmc_fp_amber.pin));
 	gpio_add_callback(bmc_fp_amber.port, &bmc_fp_amber_cb_data);
+
+	if (!device_is_ready(bmc_fp_id.port)) {
+		LOG_ERR("BMC FP ID LED is not ready");
+		return;
+	}
+	gpio_pin_configure_dt(&bmc_fp_id, GPIO_INPUT);
+	gpio_pin_interrupt_configure_dt(&bmc_fp_id, GPIO_INT_EDGE_BOTH);
+	gpio_init_callback(&bmc_fp_id_cb_data, bmc_fp_led_handler, BIT(bmc_fp_id.pin));
+	gpio_add_callback(bmc_fp_id.port, &bmc_fp_id_cb_data);
 }
 
 K_TIMER_DEFINE(fpled_timer, fp_amber_led_ctrl_callback, NULL);
@@ -709,12 +757,12 @@ void SetFPLEDState(byte PlatformStateData)
 {
 	// FP LED behavior
 	//
-	// |  Green  |  Amber  | State    |
-	// --------------------------------
-	// |   Lit   |  Off    | Verify   |
-	// |   Off   |  Blink  | Recovery |
-	// |   Off   |  Lit    | Update   |
-	// | PassThr | PassThr | Tzero    |
+	// |  Green  |  Amber  |   ID    | State    |
+	// --------------------|---------|------------
+	// |   Lit   |  Off    | Bypass  | Verify   |
+	// |   Off   |  Blink  | Bypass  | Recovery |
+	// |   Off   |  Lit    | Bypass  | Update   |
+	// | PassThr | PassThr | PassThr | Tzero    |
 	if (PlatformStateData == PCH_FW_UPDATE ||
 	    PlatformStateData == BMC_FW_UPDATE ||
 	    PlatformStateData == CPLD_FW_UPDATE) {
@@ -754,6 +802,14 @@ void SetFPLEDState(byte PlatformStateData)
 		}
 		pin_state ? led_on(led_dev, FP_AMBER_LED) : led_off(led_dev, FP_AMBER_LED);
 		fp_amber_on = pin_state;
+
+		pin_state = gpio_pin_get(bmc_fp_id.port, bmc_fp_id.pin);
+		if (pin_state < 0) {
+			LOG_ERR("Failed to get BMC_FP_ID_LED");
+			return;
+		}
+		pin_state ? led_on(led_dev, FP_ID_LED) : led_off(led_dev, FP_ID_LED);
+		fp_id_on = pin_state;
 	}
 }
 #endif
@@ -1086,6 +1142,38 @@ void EnablePitLevel2(void)
 #endif
 
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
+int ProvisionAFMOffset(uint8_t *DataBuffer, uint32_t length)
+{
+	uint32_t UfmStatus;
+	int Status;
+
+	if (!DataBuffer)
+		return Failure;
+
+	Status = get_provision_data_in_flash(UFM_STATUS, (uint8_t *)&UfmStatus, sizeof(UfmStatus));
+	if (Status != Success) {
+		LOG_ERR("Failed to get UFM status");
+		return Failure;
+	}
+
+	if (!CheckUfmStatus(UfmStatus, UFM_STATUS_LOCK_BIT_MASK) &&
+		!CheckUfmStatus(UfmStatus, UFM_STATUS_PROVISIONED_AFM_OFFSETS_BIT_MASK)) {
+		Status = set_provision_data_in_flash(AFM_STAGING_REGION_OFFSET, DataBuffer, length);
+		if (Status == Success) {
+			SetUfmFlashStatus(UfmStatus, UFM_STATUS_PROVISIONED_AFM_OFFSETS_BIT_MASK);
+			LOG_INF("AFM offset provisioned");
+			return Success;
+		}
+
+		LOG_ERR("AFM Staging offset provision failed...");
+		erase_provision_ufm_flash();
+		return Failure;
+	}
+
+	LOG_WRN("%s, Provisioned or UFM Locked", __func__);
+	return UnSupported;
+}
+
 bool IsSpdmAttestationEnabled()
 {
 	// This setting will active/deactive SPDM attestation on next boot.
@@ -1110,10 +1198,20 @@ void EnableSpdmAttestation(bool enable)
 			(uint8_t *)&cpld_status, sizeof(CPLD_STATUS));
 }
 
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
 void ReadDeviceIdPublicKey(void)
 {
+	uint32_t pub_key_addr = 0;
+	uint8_t buf[ECDSA384_PUBLIC_KEY_SIZE];
 
+	pub_key_addr = offsetof(PFR_DEVID_CERT_INFO, pubkey);
+	pfr_spi_read(ROT_INTERNAL_CERTIFICATE, pub_key_addr, sizeof(buf), buf);
+
+	memcpy(gReadFifoData, buf, sizeof(buf));
+	for (size_t i = 0; i < sizeof(buf); ++i)
+		swmbx_write(gSwMbxDev, true, UfmReadFIFO, buf + i);
 }
+#endif
 #endif
 
 void lock_provision_flash(void)
@@ -1153,6 +1251,16 @@ void ReadBmcOffets(void)
 		swmbx_write(gSwMbxDev, true, UfmReadFIFO, gBmcOffsets + i);
 }
 
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+void ReadAFMOffset(void)
+{
+	get_provision_data_in_flash(AFM_STAGING_REGION_OFFSET, gAFMOffset, sizeof(gAFMOffset));
+	memcpy(gReadFifoData, gAFMOffset, sizeof(gAFMOffset));
+	for (size_t i = 0; i < sizeof(gAFMOffset); ++i)
+		swmbx_write(gSwMbxDev, true, UfmReadFIFO, gAFMOffset + i);
+}
+#endif
+
 /**
  * Function to process th UFM command operations
  * @Param  NULL
@@ -1177,7 +1285,11 @@ void process_provision_command(void)
 	get_provision_data_in_flash(UFM_STATUS, (uint8_t *)&UfmFlashStatus, sizeof(UfmFlashStatus));
 
 	if (CheckUfmStatus(UfmFlashStatus, UFM_STATUS_LOCK_BIT_MASK)) {
-		if ((UfmCommandData < READ_ROOT_KEY) || (UfmCommandData > READ_BMC_OFFSET)) {
+		if ((UfmCommandData < READ_ROOT_KEY) ||
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+			(UfmCommandData == PROVISION_AFM_OFFSET) ||
+#endif
+			(UfmCommandData > READ_BMC_OFFSET)) {
 			// Ufm locked
 			LOG_WRN("UFM Locked and Dropped Write Command: 0x%x", UfmCommandData);
 			SetUfmStatusValue(COMMAND_ERROR);
@@ -1246,13 +1358,27 @@ void process_provision_command(void)
 		break;
 #endif
 #if defined(CONFIG_PFR_SPDM_ATTESTATION)
+	case PROVISION_AFM_OFFSET:
+		memcpy(gAFMOffset, gUfmFifoData, sizeof(gAFMOffset));
+		Status = ProvisionAFMOffset(gAFMOffset, sizeof(gAFMOffset));
+		if (Status != Success) {
+			SetUfmStatusValue(COMMAND_ERROR);
+			return;
+		}
+		gProvisionData = 1;
+		break;
+	case READ_AFM_OFFSET:
+		ReadAFMOffset();
+		break;
 	case ENABLE_DEVICE_ATTESTATION_REQUESTS:
 		LOG_INF("Enable SPDM Attestation");
 		EnableSpdmAttestation(true);
 		break;
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
 	case READ_DEVICE_ID_PUBLIC_KEY:
 		ReadDeviceIdPublicKey();
 		break;
+#endif
 	case DISABLE_DEVICE_ATTESTATION_REQUESTS:
 		LOG_INF("Disable SPDM Attestation");
 		EnableSpdmAttestation(false);
@@ -1268,6 +1394,9 @@ void process_provision_command(void)
 		get_provision_data_in_flash(UFM_STATUS, (uint8_t *)&UfmFlashStatus, sizeof(UfmFlashStatus));
 		if (CheckUfmStatus(UfmFlashStatus, UFM_STATUS_PROVISIONED_ROOT_KEY_HASH_BIT_MASK |
 			   UFM_STATUS_PROVISIONED_PCH_OFFSETS_BIT_MASK |
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+			   UFM_STATUS_PROVISIONED_AFM_OFFSETS_BIT_MASK |
+#endif
 			   UFM_STATUS_PROVISIONED_BMC_OFFSETS_BIT_MASK)) {
 			CPLD_STATUS cpld_status;
 
@@ -1294,6 +1423,10 @@ void UpdateBmcCheckpoint(byte Data)
 		SetBmcCheckpoint(Data);
 		bmc_wdt_handler(Data);
 	}
+#if defined(CONFIG_SECURE_CONNECTION_RESPONDER)
+	if (gWdtBootStatus & WDT_BMC_BOOT_DONE_MASK)
+		set_secure_connection_state(true);
+#endif
 }
 
 #if defined(CONFIG_INTEL_PFR)
@@ -1334,6 +1467,151 @@ void UpdateBiosCheckpoint(byte Data)
 	}
 }
 
+void set_swmbx_state(bool value)
+{
+	if (curr_secure_state == (uint8_t)value) {
+		// State is not changed, don't need to reconfigure the settings
+		return;
+	} else
+		curr_secure_state = value;
+
+	LOG_INF("set secure state to %s mode", (value)?"restrict":"loose");
+
+	if (value) {
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, UfmWriteFIFO, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, UfmCmdTriggerValue, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcUpdateIntent, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcCheckpoint, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcUpdateIntent2, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, UfmSmbusOwnership, false);
+		swmbx_update_notify(gSwMbxDev, 0x0, NULL, BmcResetCommunication, false);
+
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, UfmWriteFIFO, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, UfmCmdTriggerValue, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, PchUpdateIntent, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, AcmCheckpoint, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, BiosCheckpoint, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, PchUpdateIntent2, false);
+		swmbx_update_notify(gSwMbxDev, 0x1, NULL, UfmSmbusOwnership, false);
+		/* Protect bit:
+		 * 0 means readable/writable
+		 * 1 means read-only
+		 *
+		 * Port and access_control[]:
+		 * 0 for BMC
+		 * 1 for PCH
+		 * when secure mode is enabled, to make all registers to be read-only in swmbx interface
+		 */
+		uint32_t access_control[2][8] = {
+			/* BMC */
+			{
+				0xffff7fff, // 1fh ~ 00h
+				0xffffffff, // 3fh ~ 20h CPLD RoT Hash
+				0xffffffff, // 5fh ~ 40h CPLD RoT Hash
+				0xffffffff, // 7fh ~ 60h
+				0xffffffff, // 9fh ~ 80h ACM/BIOS Scrachpad
+				0xffffffff, // bfh ~ a0h ACM/BIOS Scrachpad
+				0xffffffff, // dfh ~ c0h BMC scrachpad
+				0xffffffff, // ffh ~ e0h BMC scrachpad
+			},
+			/* PCH */
+			{
+				0xffffffff, // 1fh ~ 00h
+				0xffffffff, // 3fh ~ 20h CPLD RoT Hash
+				0xffffffff, // 5fh ~ 40h CPLD RoT Hash
+				0xffffffff, // 7fh ~ 60h
+				0xffffffff, // 9fh ~ 80h ACM/BIOS Scrachpad
+				0xffffffff, // bfh ~ a0h ACM/BIOS Scrachpad
+				0xffffffff, // dfh ~ c0h BMC scrachpad
+				0xffffffff, // ffh ~ e0h BMC scrachpad
+			},
+		};
+		swmbx_apply_protect(gSwMbxDev, 0, access_control[0], 0, 8);
+		swmbx_apply_protect(gSwMbxDev, 1, access_control[1], 0, 8);
+	} else {
+		swmbx_update_notify(gSwMbxDev, 0x0, &ufm_write_fifo_data_sem, UfmWriteFIFO, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &ufm_provision_trigger_sem,
+				UfmCmdTriggerValue, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_update_intent_sem, BmcUpdateIntent, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_checkpoint_sem, BmcCheckpoint, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_update_intent2_sem,
+				BmcUpdateIntent2, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_ufm_smbus_ownership_sem,
+				UfmSmbusOwnership, true);
+		swmbx_update_notify(gSwMbxDev, 0x0, &bmc_i3c_reset_comm_sem, BmcResetCommunication,
+				true);
+
+		swmbx_update_notify(gSwMbxDev, 0x1, &ufm_write_fifo_data_sem, UfmWriteFIFO, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &ufm_provision_trigger_sem,
+				UfmCmdTriggerValue, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &pch_update_intent_sem, PchUpdateIntent, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &acm_checkpoint_sem, AcmCheckpoint, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &bios_checkpoint_sem, BiosCheckpoint, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &pch_update_intent2_sem, PchUpdateIntent2, true);
+		swmbx_update_notify(gSwMbxDev, 0x1, &pch_ufm_smbus_ownership_sem,
+				UfmSmbusOwnership, true);
+		/* Protect bit:
+		 * 0 means readable/writable
+		 * 1 means read-only
+		 *
+		 * Port and access_control[]:
+		 * 0 for BMC
+		 * 1 for PCH
+		 */
+		uint32_t access_control[2][8] = {
+			/* BMC */
+			{
+				0xfff704ff, // 1fh ~ 00h
+				0xffffffff, // 3fh ~ 20h CPLD RoT Hash
+				0xffffffff, // 5fh ~ 40h CPLD RoT Hash
+				0xfffffff2, // 7fh ~ 60h
+				0xffffffff, // 9fh ~ 80h ACM/BIOS Scrachpad
+				0xffffffff, // bfh ~ a0h ACM/BIOS Scrachpad
+				0x00000000, // dfh ~ c0h BMC scrachpad
+				0x00000000, // ffh ~ e0h BMC scrachpad
+			},
+			/* PCH */
+			{
+				0xfff884ff, // 1fh ~ 00h
+				0xffffffff, // 3fh ~ 20h CPLD RoT Hash
+				0xffffffff, // 5fh ~ 40h CPLD RoT Hash
+				0xfffffff5, // 7fh ~ 60h
+				0x00000000, // 9fh ~ 80h ACM/BIOS Scrachpad
+				0x00000000, // bfh ~ a0h ACM/BIOS Scrachpad
+				0xffffffff, // dfh ~ c0h BMC scrachpad
+				0xffffffff, // ffh ~ e0h BMC scrachpad
+			},
+		};
+		swmbx_apply_protect(gSwMbxDev, 0, access_control[0], 0, 8);
+		swmbx_apply_protect(gSwMbxDev, 1, access_control[1], 0, 8);
+	}
+}
+
+void set_secure_connection_state(bool enable)
+{
+	uint8_t ufm_status;
+
+	if (enable == false) {
+		set_swmbx_state(false);
+		return;
+	}
+
+	ufm_status = GetUfmStatusValue();
+	if (CONFIG_SECURE_LOCK_MODE == SECURE_CONNECTION_RESTRICT_MODE) {
+		if (ufm_status & UFM_PROVISIONED)
+			set_swmbx_state(true);
+		else
+			set_swmbx_state(false);
+	} else if (CONFIG_SECURE_LOCK_MODE == SECURE_CONNECTION_LOOSE_MODE) {
+		if (ufm_status & UFM_LOCKED)
+			set_swmbx_state(true);
+		else
+			set_swmbx_state(false);
+	} else {
+		set_swmbx_state(false);
+	}
+}
+
 /**
  * Function to show current provision data
  *
@@ -1346,7 +1624,6 @@ void show_provision_info(void)
 	uint32_t unprovision = 0xffffffff;
 
 	ufm_status = GetUfmStatusValue();
-
 	memset(tmpbuf, 0xff, sizeof(tmpbuf));
 	get_provision_data_in_flash(BMC_ACTIVE_PFM_OFFSET, tmpbuf, BMC_OFFSET_SIZE);
 	if (memcmp(tmpbuf, &unprovision, 4) == 0) {
@@ -1360,10 +1637,16 @@ void show_provision_info(void)
 		LOG_INF("PCH Active PFM Offset : %08x", *(uint32_t *)&tmpbuf[0]);
 		LOG_INF("PCH Recovery Region Offset : %08x", *(uint32_t *)&tmpbuf[4]);
 		LOG_INF("PCH Staging Region Offset : %08x", *(uint32_t *)&tmpbuf[8]);
-		memset(tmpbuf, 0xff, BMC_OFFSET_SIZE);
+		memset(tmpbuf, 0xff, PCH_OFFSET_SIZE);
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+		get_provision_data_in_flash(AFM_STAGING_REGION_OFFSET, tmpbuf, AFM_OFFSET_SIZE);
+		LOG_INF("AFM Staging Region Offset : %08x", *(uint32_t *)&tmpbuf[0]);
+		memset(tmpbuf, 0xff, AFM_OFFSET_SIZE);
+#endif
 		get_provision_data_in_flash(ROOT_KEY_HASH, tmpbuf, SHA384_DIGEST_LENGTH);
 		LOG_HEXDUMP_INF(tmpbuf, SHA384_DIGEST_LENGTH, "Root Key Hash:");
 	}
 
 	LOG_INF("UFM/Provisioning Status Code : %x", ufm_status);
+	LOG_INF("Secure state : %s", (curr_secure_state == true)?"enabled":"disabled");
 }

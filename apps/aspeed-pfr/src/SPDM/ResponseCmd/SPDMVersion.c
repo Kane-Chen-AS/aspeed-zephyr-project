@@ -15,6 +15,8 @@ int spdm_handle_get_version(void *ctx, void *req, void *rsp)
 	struct spdm_message *rsp_msg = (struct spdm_message *)rsp;
 	int ret = -1;
 
+	LOG_HEXDUMP_INF(&req_msg->header, sizeof(req_msg->header), "GET_VERSION HEADER:");
+
 	// Shall be 0x10 (V1.0)
 	if (req_msg->header.spdm_version != SPDM_VERSION_10) {
 		LOG_ERR("Unsupported header SPDM_VERSION %x", req_msg->header.spdm_version);
@@ -33,13 +35,11 @@ int spdm_handle_get_version(void *ctx, void *req, void *rsp)
 	spdm_buffer_init(&rsp_msg->buffer, 2 + 2 * context->local.version.version_number_entry_count);
 	spdm_buffer_append_reserved(&rsp_msg->buffer, 1);
 	spdm_buffer_append_u8(&rsp_msg->buffer, context->local.version.version_number_entry_count);
-	for (uint8_t i=0; i < SPDM_MAX_VERSION && i < context->local.version.version_number_entry_count; ++i) {
+	for (uint8_t i = 0; i < SPDM_MAX_VERSION && i < context->local.version.version_number_entry_count; ++i)
 		spdm_buffer_append_u16(&rsp_msg->buffer, context->local.version.version_number_entry[i]);
-	}
 
 	spdm_context_reset_m1m2_hash(context);
 	spdm_context_update_m1m2_hash(context, req_msg, rsp_msg);
-	
 	spdm_buffer_release(&context->message_a);
 	spdm_buffer_init(&context->message_a, 0);
 	/* Construct transcript for challenge */
@@ -55,6 +55,7 @@ int spdm_handle_get_version(void *ctx, void *req, void *rsp)
 	ret = 0;
 
 cleanup:
+	LOG_INF("Handle GET_VERSION : done");
 
 	return ret;
 }

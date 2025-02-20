@@ -219,7 +219,7 @@ int get_rot_region(uint8_t device_id, const struct flash_area **fa)
 	case ROT_INTERNAL_KEY:
 		ret = flash_area_open(FIXED_PARTITION_ID(key_partition), fa);
 		break;
-#if defined(CONFIG_BOOTLOADER_MCUBOOT)
+#if defined(CONFIG_BOARD_AST1060_DCSCM_DICE) || defined(CONFIG_BOARD_AST1060_DUAL_FLASH_DICE)
 	case ROT_INTERNAL_CERTIFICATE:
 		ret = flash_area_open(FIXED_PARTITION_ID(certificate_partition), fa);
 		break;
@@ -422,7 +422,7 @@ int bmc_pch_get_flash_size(uint8_t device_id)
 	uint32_t address = 0;
 	int ret = get_flash_dev(device_id, &address, &flash_dev);
 	if (ret)
-		return ret;
+		return 0;
 
 	flash_sz = flash_get_flash_size(flash_dev);
 	return flash_sz;
@@ -435,7 +435,7 @@ int rot_get_region_size(uint8_t device_id)
 
 	ret = get_rot_region(device_id, &fa);
 	if (ret)
-		return ret;
+		return 0;
 
 	return fa->fa_size;
 }

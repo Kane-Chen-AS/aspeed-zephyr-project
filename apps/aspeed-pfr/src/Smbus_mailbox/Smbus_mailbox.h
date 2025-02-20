@@ -10,7 +10,9 @@
 #include <stdint.h>
 #include "include/SmbusMailBoxCom.h"
 #include "AspeedStateMachine/common_smc.h"
-
+#if defined(CONFIG_PFR_MCTP)
+#include "mctp/plat_mctp.h"
+#endif
 #pragma pack(1)
 
 typedef enum _SMBUS_MAILBOX_RF_ADDRESS_READONLY {
@@ -29,11 +31,7 @@ typedef enum _SMBUS_MAILBOX_RF_ADDRESS_READONLY {
 	UfmCmdTriggerValue = 0x0c,
 	UfmWriteFIFO = 0x0d,
 	UfmReadFIFO = 0x0e,
-#if defined(CONFIG_PFR_MCTP)
 	MCTPWriteFIFO = 0x0f,
-#else
-	BmcCheckpoint = 0x0f,
-#endif
 	AcmCheckpoint = 0x10,
 	BiosCheckpoint = 0x11,
 	PchUpdateIntent = 0x12,
@@ -51,9 +49,7 @@ typedef enum _SMBUS_MAILBOX_RF_ADDRESS_READONLY {
 	BmcPfmRecoverMajorVersion = 0x1e,
 	BmcPfmRecoverMinorVersion = 0x1f,
 	CpldFPGARoTHash = 0x20, /* 0x20 - 0x5f */
-#if defined(CONFIG_PFR_MCTP)
 	BmcCheckpoint = 0x60,
-#endif
 	PchUpdateIntent2        = 0x61,
 	BmcUpdateIntent2        = 0x62,
 	UfmSmbusOwnership       = 0x63,
@@ -74,7 +70,8 @@ typedef enum _SMBUS_MAILBOX_RF_ADDRESS_READONLY {
 	PfrActivityInfo1        = 0x7e,
 	PfrActivityInfo2        = 0x7f,
 	AcmBiosScratchPad       = 0x80,
-	BmcScratchPad           = 0xc0,
+	BmcResetCommunication   = 0xc0,
+	BmcScratchPad           = 0xc1,
 } SMBUS_MAILBOX_RF_ADDRESS;
 
 typedef enum _EXECUTION_CHECKPOINT {
@@ -253,8 +250,10 @@ void ClearBmcCheckpoint(void);
 void initializeFPLEDs(void);
 void SetUfmFlashStatus(uint32_t UfmStatus, uint32_t UfmStatusBitMask);
 void log_t0_timed_boot_complete_if_ready(const PLATFORM_STATE_VALUE current_boot_state);
-
+#if defined(CONFIG_PFR_SPDM_ATTESTATION)
+int ProvisionAFMOffset(uint8_t *DataBuffer, uint32_t length);
 bool IsSpdmAttestationEnabled();
+#endif
 
 #define UFM_STATUS_LOCK_BIT_MASK                      0b1
 #define UFM_STATUS_PROVISIONED_ROOT_KEY_HASH_BIT_MASK 0b10
@@ -265,13 +264,24 @@ bool IsSpdmAttestationEnabled();
 #define UFM_STATUS_PIT_L2_ENABLE_BIT_MASK             0b1000000
 #define UFM_STATUS_PIT_HASH_STORED_BIT_MASK           0b10000000
 #define UFM_STATUS_PIT_L2_PASSED_BIT_MASK             0b100000000
+#define UFM_STATUS_PROVISIONED_AFM_OFFSETS_BIT_MASK   0b1000000000
 
 // If root key hash, pch and bmc offsets are provisioned, we say CPLD has been provisioned
 #define UFM_STATUS_PROVISIONED_BIT_MASK               0b000001110
 
-int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data);
+int swmbx_mctp_i3c_doe_msg_write_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data, int channel_id, uint8_t s_eid);
 int swmbx_mctp_i3c_doe_msg_read_handler(uint8_t addr, uint8_t data_len, uint8_t *swmbx_data);
 
 #define BMC_OFFSET_SIZE 12
 #define PCH_OFFSET_SIZE 12
+#define AFM_OFFSET_SIZE 4
 
+#define SWMBX_READ_FIFO_SIZE 128
+#define SWMBX_WRITE_FIFO_SIZE 64
+
+typedef enum {
+	SECURE_CONNECTION_DISABLE,
+	SECURE_CONNECTION_LOOSE_MODE,
+	SECURE_CONNECTION_RESTRICT_MODE
+} SECURE_CONNECTION_LOCK_MODE;
+void set_secure_connection_state(bool enable);
