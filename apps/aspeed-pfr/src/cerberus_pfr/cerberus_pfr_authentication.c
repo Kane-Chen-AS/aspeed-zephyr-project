@@ -32,6 +32,14 @@ int pfr_active_verify(struct pfr_manifest *manifest)
 
 	LOG_INF("Active Firmware Verification");
 	LOG_INF("Verifying PFM, address=0x%08x", manifest->address);
+
+#if defined(CONFIG_IGNORE_BIOS_VALIDATION)
+	if (manifest->image_type == PCH_TYPE) {
+		LOG_INF("Ignore PCH Verification");
+		return Success;
+	}
+#endif
+
 	status = manifest->base->verify((struct manifest *)manifest, manifest->hash, manifest->verification->base, manifest->pfr_hash->hash_out, manifest->pfr_hash->length);
 	if (status != Success) {
 		LOG_ERR("Verify active PFM failed");
