@@ -583,6 +583,13 @@ int firmware_image_verify(const struct firmware_image *fw, struct hash_engine *h
 		return Failure;
 	}
 
+#if defined(CONFIG_IGNORE_BIOS_VALIDATION)
+	if (manifest->image_type == PCH_TYPE) {
+		LOG_INF("Ignore PCH Verification");
+		return Success;
+	}
+#endif
+
 	LOG_INF("Staging Region Verification");
 
 	init_stage_and_recovery_offset(manifest);

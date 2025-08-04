@@ -42,6 +42,13 @@ int pfr_recover_active_region(struct pfr_manifest *manifest)
 	int sector_sz = pfr_spi_get_block_size(manifest->image_type);
 	bool support_block_erase = (sector_sz == BLOCK_SIZE);
 
+#if defined(CONFIG_IGNORE_BIOS_VALIDATION)
+		if (manifest->image_type == PCH_TYPE) {
+			LOG_INF("Ignore PCH Verification");
+			return Success;
+		}
+#endif
+
 	if (manifest->image_type == BMC_TYPE) {
 		get_provision_data_in_flash(BMC_RECOVERY_REGION_OFFSET,
 				(uint8_t *)&source_address, sizeof(source_address));
@@ -330,6 +337,13 @@ int recovery_verify(struct recovery_image *image, struct hash_engine *hash,
 		LOG_ERR("Unsupported image type %d", manifest->image_type);
 		return Failure;
 	}
+
+#if defined(CONFIG_IGNORE_BIOS_VALIDATION)
+	if (manifest->image_type == PCH_TYPE) {
+		LOG_INF("Ignore PCH Verification");
+		return Success;
+	}
+#endif
 
 	init_stage_and_recovery_offset(manifest);
 	manifest->address = manifest->recovery_address;

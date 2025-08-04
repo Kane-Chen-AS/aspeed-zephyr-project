@@ -1064,6 +1064,30 @@ void do_rot_recovery(void *o)
 	LOG_DBG("End");
 }
 
+#if defined(CONFIG_IGNORE_BIOS_VALIDATION)
+void disable_pch_protection()
+{
+	LOG_INF("Disable PCH SPI protection");
+	if (device_get_binding("spim@3") != NULL) {
+		Set_SPI_Filter_RW_Region("spim@3", SPI_FILTER_READ_PRIV,
+				SPI_FILTER_PRIV_ENABLE, 0, 0x10000000);
+		Set_SPI_Filter_RW_Region("spim@3", SPI_FILTER_WRITE_PRIV,
+				SPI_FILTER_PRIV_ENABLE, 0, 0x10000000);
+		SPI_Monitor_Enable("spim@3", false);
+		LOG_INF("Bypass %s", "spim@3");
+	}
+
+	if (device_get_binding("spim@4") != NULL) {
+		Set_SPI_Filter_RW_Region("spim@4", SPI_FILTER_READ_PRIV,
+				SPI_FILTER_PRIV_ENABLE, 0, 0x10000000);
+		Set_SPI_Filter_RW_Region("spim@4", SPI_FILTER_WRITE_PRIV,
+				SPI_FILTER_PRIV_ENABLE, 0, 0x10000000);
+		SPI_Monitor_Enable("spim@4", false);
+		LOG_INF("Bypass %s", "spim@4");
+	}
+}
+#endif
+
 void enter_tzero(void *o)
 {
 	LOG_DBG("Start");
@@ -1087,7 +1111,11 @@ void enter_tzero(void *o)
 			BMCBootRelease();
 			goto enter_tzero_end;
 		} else if (evt_ctx->data.bit8[2] & PchOnlyReset) {
+#if defined(CONFIG_IGNORE_BIOS_VALIDATION)
+			disable_pch_protection();
+#else
 			apply_pfm_protection(PCH_SPI);
+#endif
 			PCHBootRelease();
 			goto enter_tzero_end;
 		}
@@ -1110,7 +1138,11 @@ void enter_tzero(void *o)
 
 		if (state->pch_active_object.ActiveImageStatus == Success) {
 			/* Arm SPI Filter */
+#if defined(CONFIG_IGNORE_BIOS_VALIDATION)
+			disable_pch_protection();
+#else
 			apply_pfm_protection(PCH_SPI);
+#endif
 			PCHBootRelease();
 		} else
 			LOG_ERR("Host firmware is invalid, host won't boot");

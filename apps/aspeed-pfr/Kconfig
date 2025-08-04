@@ -254,4 +254,10 @@ config ASPEED_STATE_MACHINE_EVENT_STEPPING
 	bool "Event stepping for state machine"
 	default n
 
+config IGNORE_BIOS_VALIDATION
+	bool "Ignore BIOS validation"
+	default n
+	help
+	  workaround for disabling the BIOS validation
+
 source "Kconfig.zephyr"
